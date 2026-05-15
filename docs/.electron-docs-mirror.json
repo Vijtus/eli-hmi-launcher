@@ -1,0 +1,22 @@
+{
+  "sourceRepository": "https://github.com/electron/electron.git",
+  "sourceTag": "v42.1.0",
+  "syncedAt": "2026-05-15T07:26:38.456Z",
+  "strategy": "mirror-upstream-markdown",
+  "included": [
+    "docs/**/*.md"
+  ],
+  "excluded": [
+    "Rendered website HTML",
+    "Website CSS/JS assets",
+    "Images and non-Markdown assets",
+    "docs/fiddles examples"
+  ],
+  "markdownFileCount": 277,
+  "topLevelDirectories": [
+    "api",
+    "development",
+    "images",
+    "tutorial"
+  ]
+}

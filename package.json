@@ -1,0 +1,8 @@
+{
+  "name": "eli-hmi-launcher",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:electron-docs": "node ./scripts/sync-electron-docs.mjs"
+  }
+}
