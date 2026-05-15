@@ -1,4 +1,4 @@
-# eli-hmi-launcher
+# ELI HMIs Launcher
 
 This repository is the codebase for a new CS HMIS launcher built with web technologies on top of Electron. The goal is to develop the launcher like a web application while still packaging and running it as a native desktop application that can execute machine code on the host system.
 
