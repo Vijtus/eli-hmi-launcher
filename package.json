@@ -2,7 +2,15 @@
   "name": "eli-hmi-launcher",
   "private": true,
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
+    "start": "electron .",
     "sync:electron-docs": "node ./scripts/sync-electron-docs.mjs"
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "electron": "42.1.0"
   }
 }
