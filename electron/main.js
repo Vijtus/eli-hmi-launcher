@@ -67,7 +67,7 @@ function createMainWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
@@ -75,6 +75,12 @@ function createMainWindow() {
 }
 
 async function launchWebTarget(url) {
+  const parsedUrl = new URL(url);
+
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new Error("Only HTTP(S) URLs are allowed for web launchables.");
+  }
+
   await shell.openExternal(url);
 }
 
