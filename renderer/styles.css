@@ -153,9 +153,38 @@ button:hover {
   margin-bottom: 0.5rem;
 }
 
+.tree-node {
+  display: block;
+}
+
+.tree-node-content {
+  padding-left: 1rem;
+}
+
 .branch-label {
   color: #93c5fd;
   margin: 0.25rem 0;
+}
+
+summary.branch-label {
+  cursor: pointer;
+  list-style: none;
+}
+
+summary.branch-label::-webkit-details-marker {
+  display: none;
+}
+
+summary.branch-label::before {
+  content: ">";
+  display: inline-block;
+  margin-right: 0.45rem;
+  color: #64748b;
+  transition: transform 120ms ease;
+}
+
+.tree-node[open] > summary.branch-label::before {
+  transform: rotate(90deg);
 }
 
 .launch-item {

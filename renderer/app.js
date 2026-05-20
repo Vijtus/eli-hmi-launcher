@@ -192,26 +192,43 @@ function renderTreeNodes(nodes) {
   for (const node of nodes) {
     const branch = document.createElement("li");
     branch.className = "tree-branch";
+    const launchables = Array.isArray(node.launchables) ? node.launchables : [];
+    const children = Array.isArray(node.children) ? node.children : [];
+
+    if (launchables.length > 0 || children.length > 0) {
+      const details = document.createElement("details");
+      details.className = "tree-node";
+
+      const summary = document.createElement("summary");
+      summary.className = "branch-label";
+      summary.textContent = node.label ?? "Group";
+      details.appendChild(summary);
+
+      const content = document.createElement("div");
+      content.className = "tree-node-content";
+
+      for (const item of launchables) {
+        const row = document.createElement("div");
+        row.className = "launch-item";
+        const launchButton = createButton(item.label ?? item.id, () => launchItem(item));
+        row.appendChild(launchButton);
+        content.appendChild(row);
+      }
+
+      if (children.length > 0) {
+        content.appendChild(renderTreeNodes(children));
+      }
+
+      details.appendChild(content);
+      branch.appendChild(details);
+      list.appendChild(branch);
+      continue;
+    }
+
     const label = document.createElement("p");
     label.className = "branch-label";
     label.textContent = node.label ?? "Group";
     branch.appendChild(label);
-
-    const launchables = Array.isArray(node.launchables) ? node.launchables : [];
-
-    for (const item of launchables) {
-      const row = document.createElement("div");
-      row.className = "launch-item";
-      const launchButton = createButton(item.label ?? item.id, () => launchItem(item));
-      row.appendChild(launchButton);
-      branch.appendChild(row);
-    }
-
-    const children = Array.isArray(node.children) ? node.children : [];
-
-    if (children.length > 0) {
-      branch.appendChild(renderTreeNodes(children));
-    }
 
     list.appendChild(branch);
   }
