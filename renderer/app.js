@@ -6,15 +6,30 @@ const state = {
 };
 
 const appTitle = document.getElementById("app-title");
-const statusBox = document.getElementById("status");
+const mainElement = document.querySelector("main");
 const tilesView = document.getElementById("tiles-view");
 const treeView = document.getElementById("tree-view");
 const tilesButton = document.getElementById("tiles-button");
 const treeButton = document.getElementById("tree-button");
 
-function setStatus(message, isError = false) {
-  statusBox.textContent = message;
-  statusBox.style.color = isError ? "#fca5a5" : "#38bdf8";
+function setError(message) {
+  const existingError = document.getElementById("error-banner");
+
+  if (!message) {
+    existingError?.remove();
+    return;
+  }
+
+  if (existingError) {
+    existingError.textContent = message;
+    return;
+  }
+
+  const errorBanner = document.createElement("section");
+  errorBanner.id = "error-banner";
+  errorBanner.className = "error-banner";
+  errorBanner.textContent = message;
+  mainElement.prepend(errorBanner);
 }
 
 function createButton(label, onClick) {
@@ -51,27 +66,57 @@ async function launchItem(item) {
     }
 
     await window.launcherApi.launchItem(item.id);
-    setStatus(`Launched: ${item.label}`);
+    setError("");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setStatus(`Launch failed: ${message}`, true);
+    setError(`Launch failed: ${message}`);
   }
 }
 
 function renderBreadcrumbs(container) {
   const breadcrumbs = document.createElement("div");
   breadcrumbs.className = "breadcrumbs";
-  breadcrumbs.appendChild(
-    createButton("Root", () => {
+
+  function appendBreadcrumb(label, onClick, isCurrent = false) {
+    if (breadcrumbs.childElementCount > 0) {
+      const separator = document.createElement("span");
+      separator.className = "breadcrumb-separator";
+      separator.textContent = ">";
+      breadcrumbs.appendChild(separator);
+    }
+
+    if (isCurrent) {
+      const current = document.createElement("span");
+      current.className = "breadcrumb-current";
+      current.textContent = label;
+      breadcrumbs.appendChild(current);
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.className = "breadcrumb-link";
+    link.href = "#";
+    link.textContent = label;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      onClick();
+    });
+    breadcrumbs.appendChild(link);
+  }
+
+  appendBreadcrumb(
+    "Root",
+    () => {
       state.path = [];
       render();
-    }),
+    },
+    state.path.length === 0,
   );
 
   let nodes = state.menu;
   const pathSoFar = [];
 
-  for (const index of state.path) {
+  for (const [pathIndex, index] of state.path.entries()) {
     const node = nodes[index];
 
     if (!node) {
@@ -80,11 +125,13 @@ function renderBreadcrumbs(container) {
 
     pathSoFar.push(index);
     const breadcrumbPath = [...pathSoFar];
-    breadcrumbs.appendChild(
-      createButton(node.label ?? "Group", () => {
+    appendBreadcrumb(
+      node.label ?? "Group",
+      () => {
         state.path = breadcrumbPath;
         render();
-      }),
+      },
+      pathIndex === state.path.length - 1,
     );
     nodes = Array.isArray(node.children) ? node.children : [];
   }
@@ -156,10 +203,7 @@ function renderTreeNodes(nodes) {
       const row = document.createElement("div");
       row.className = "launch-item";
       const launchButton = createButton(item.label ?? item.id, () => launchItem(item));
-      const kind = document.createElement("span");
-      kind.className = "kind";
-      kind.textContent = item.type;
-      row.append(launchButton, kind);
+      row.appendChild(launchButton);
       branch.appendChild(row);
     }
 
@@ -209,11 +253,11 @@ async function initialize() {
     state.appName = config.appName ?? state.appName;
     state.menu = Array.isArray(config.menu) ? config.menu : [];
     appTitle.textContent = state.appName;
-    setStatus(`Loaded ${state.menu.length} root groups`);
+    setError("");
     render();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setStatus(`Config load failed: ${message}`, true);
+    setError(`Config load failed: ${message}`);
   }
 }
 
