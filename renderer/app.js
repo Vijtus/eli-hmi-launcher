@@ -46,6 +46,10 @@ function getNodeByPath() {
 
 async function launchItem(item) {
   try {
+    if (!window.launcherApi?.launchItem) {
+      throw new Error("Launcher API is unavailable. Check that the preload script loaded correctly.");
+    }
+
     await window.launcherApi.launchItem(item.id);
     setStatus(`Launched: ${item.label}`);
   } catch (error) {
@@ -57,10 +61,12 @@ async function launchItem(item) {
 function renderBreadcrumbs(container) {
   const breadcrumbs = document.createElement("div");
   breadcrumbs.className = "breadcrumbs";
-  breadcrumbs.appendChild(createButton("Root", () => {
-    state.path = [];
-    render();
-  }));
+  breadcrumbs.appendChild(
+    createButton("Root", () => {
+      state.path = [];
+      render();
+    }),
+  );
 
   let nodes = state.menu;
   const pathSoFar = [];
@@ -73,10 +79,12 @@ function renderBreadcrumbs(container) {
     }
 
     pathSoFar.push(index);
-    breadcrumbs.appendChild(createButton(node.label ?? "Group", () => {
-      state.path = [...pathSoFar];
-      render();
-    }));
+    breadcrumbs.appendChild(
+      createButton(node.label ?? "Group", () => {
+        state.path = [...pathSoFar];
+        render();
+      }),
+    );
     nodes = Array.isArray(node.children) ? node.children : [];
   }
 
@@ -100,10 +108,14 @@ function renderTiles() {
     title.textContent = group.label ?? "Group";
     const description = document.createElement("p");
     description.textContent = "Open group";
-    tile.append(title, description, createButton("Open", () => {
-      state.path = [...state.path, index];
-      render();
-    }));
+    tile.append(
+      title,
+      description,
+      createButton("Open", () => {
+        state.path = [...state.path, index];
+        render();
+      }),
+    );
     grid.appendChild(tile);
   }
 
@@ -114,7 +126,11 @@ function renderTiles() {
     title.textContent = item.label ?? item.id;
     const description = document.createElement("p");
     description.textContent = item.description ?? `${item.type} launchable`;
-    tile.append(title, description, createButton("Launch", () => launchItem(item)));
+    tile.append(
+      title,
+      description,
+      createButton("Launch", () => launchItem(item)),
+    );
     grid.appendChild(tile);
   }
 
@@ -184,6 +200,10 @@ treeButton.addEventListener("click", () => {
 
 async function initialize() {
   try {
+    if (!window.launcherApi?.getConfig) {
+      throw new Error("Launcher API is unavailable. Check that the preload script loaded correctly.");
+    }
+
     const config = await window.launcherApi.getConfig();
     state.appName = config.appName ?? state.appName;
     state.menu = Array.isArray(config.menu) ? config.menu : [];
