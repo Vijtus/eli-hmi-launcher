@@ -79,9 +79,10 @@ function renderBreadcrumbs(container) {
     }
 
     pathSoFar.push(index);
+    const breadcrumbPath = [...pathSoFar];
     breadcrumbs.appendChild(
       createButton(node.label ?? "Group", () => {
-        state.path = [...pathSoFar];
+        state.path = breadcrumbPath;
         render();
       }),
     );
