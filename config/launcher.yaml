@@ -1,0 +1,32 @@
+appName: ELI Control Systems Launcher
+menu:
+  - label: L2
+    children:
+      - label: Motion
+        launchables:
+          - id: motion-web
+            label: Motion HMI (Web)
+            description: Open motion dashboard in default browser
+            type: web
+            url: "https://example.local/motion"
+          - id: motion-local-exe
+            label: Motion Local HMI
+            description: Launch local motion executable from PATH
+            type: executable
+            command: "code"
+      - label: Vacuum
+        launchables:
+          - id: vacuum-web
+            label: Vacuum HMI (Web)
+            type: web
+            url: "https://example.local/vacuum"
+  - label: Utilities
+    launchables:
+      - id: historian
+        label: Historian Viewer
+        description: Open machine historian executable
+        type: executable
+        command: "HistorianViewer.exe"
+        args:
+          - "--mode"
+          - "operator"

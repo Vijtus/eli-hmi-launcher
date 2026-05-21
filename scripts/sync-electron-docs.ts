@@ -11,7 +11,35 @@ const MIRROR_STRATEGY = "mirror-upstream-markdown";
 const INCLUDED_GLOB = "docs/**/*.md";
 const EXCLUDED_CONTENT = ["Rendered website HTML", "Website CSS/JS assets", "Images and non-Markdown assets", "docs/fiddles examples"];
 
-async function main() {
+type DirectoryEntry = {
+  name: string;
+  fileCount: number;
+};
+
+type QuickLink = {
+  label: string;
+  target: string;
+};
+
+type Manifest = {
+  totalMarkdownFiles: number;
+  topLevelDirectories: DirectoryEntry[];
+  topLevelFiles: string[];
+  quickLinks: QuickLink[];
+};
+
+type Metadata = {
+  sourceRepository: string;
+  sourceTag: string;
+  syncedAt: string;
+  strategy: string;
+  included: string[];
+  excluded: string[];
+  markdownFileCount: number;
+  topLevelDirectories: string[];
+};
+
+async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const localDocsRoot = join(repoRoot, "docs");
   const mirrorRoot = join(localDocsRoot, "electron");
@@ -32,7 +60,7 @@ async function main() {
     await rewriteAbsoluteDocsLinks(mirrorRoot);
 
     const manifest = await buildManifest(mirrorRoot);
-    const metadata = {
+    const metadata: Metadata = {
       sourceRepository: UPSTREAM_REPOSITORY,
       sourceTag,
       syncedAt: new Date().toISOString(),
@@ -54,7 +82,7 @@ async function main() {
   }
 }
 
-async function resolveLatestStableTag() {
+async function resolveLatestStableTag(): Promise<string> {
   const { stdout } = await execGit(["ls-remote", "--refs", "--tags", UPSTREAM_REPOSITORY, "v*"]);
 
   const tags = stdout
@@ -62,7 +90,7 @@ async function resolveLatestStableTag() {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => line.split("\t")[1])
-    .filter(Boolean)
+    .filter((ref): ref is string => ref !== undefined)
     .map((ref) => ref.replace("refs/tags/", ""))
     .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag))
     .sort(compareSemverTags);
@@ -76,13 +104,13 @@ async function resolveLatestStableTag() {
   return latestTag;
 }
 
-async function cloneDocsTree(sourceTag, checkoutRoot) {
+async function cloneDocsTree(sourceTag: string, checkoutRoot: string): Promise<void> {
   await execGit(["clone", "--depth", "1", "--branch", sourceTag, "--filter=blob:none", "--sparse", UPSTREAM_REPOSITORY, checkoutRoot]);
 
   await execGit(["-C", checkoutRoot, "sparse-checkout", "set", "docs"]);
 }
 
-async function copyMarkdownTree(sourceDir, targetDir) {
+async function copyMarkdownTree(sourceDir: string, targetDir: string): Promise<void> {
   const entries = await readdir(sourceDir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -108,22 +136,25 @@ async function copyMarkdownTree(sourceDir, targetDir) {
   }
 }
 
-async function rewriteAbsoluteDocsLinks(mirrorRoot) {
+async function rewriteAbsoluteDocsLinks(mirrorRoot: string): Promise<void> {
   const markdownFiles = await collectMarkdownFiles(mirrorRoot);
 
   for (const filePath of markdownFiles) {
     const original = await readFile(filePath, "utf8");
-    const updated = original.replace(/\]\((\/docs(?:\/latest)?\/[^)#\s]+)(#[^)\s]+)?\)/g, (_, absoluteTarget, hash = "") => {
-      const normalizedTarget = absoluteTarget.replace(/^\/docs\/latest\//, "").replace(/^\/docs\//, "");
-      const targetPath = join(mirrorRoot, normalizedTarget);
-      let relativeTarget = relative(dirname(filePath), targetPath).replaceAll("\\", "/");
+    const updated = original.replace(
+      /\]\((\/docs(?:\/latest)?\/[^)#\s]+)(#[^)\s]+)?\)/g,
+      (_, absoluteTarget: string, hash: string = "") => {
+        const normalizedTarget = absoluteTarget.replace(/^\/docs\/latest\//, "").replace(/^\/docs\//, "");
+        const targetPath = join(mirrorRoot, normalizedTarget);
+        let relativeTarget = relative(dirname(filePath), targetPath).replaceAll("\\", "/");
 
-      if (!relativeTarget.startsWith(".")) {
-        relativeTarget = `./${relativeTarget}`;
-      }
+        if (!relativeTarget.startsWith(".")) {
+          relativeTarget = `./${relativeTarget}`;
+        }
 
-      return `](${relativeTarget}${hash})`;
-    });
+        return `](${relativeTarget}${hash})`;
+      },
+    );
 
     if (updated !== original) {
       await writeFile(filePath, updated);
@@ -131,10 +162,10 @@ async function rewriteAbsoluteDocsLinks(mirrorRoot) {
   }
 }
 
-async function buildManifest(mirrorRoot) {
+async function buildManifest(mirrorRoot: string): Promise<Manifest> {
   const entries = await readdir(mirrorRoot, { withFileTypes: true });
-  const topLevelDirectories = [];
-  const topLevelFiles = [];
+  const topLevelDirectories: DirectoryEntry[] = [];
+  const topLevelFiles: string[] = [];
   let totalMarkdownFiles = 0;
 
   for (const entry of entries) {
@@ -143,10 +174,7 @@ async function buildManifest(mirrorRoot) {
     if (entry.isDirectory()) {
       const fileCount = await countMarkdownFiles(entryPath);
       totalMarkdownFiles += fileCount;
-      topLevelDirectories.push({
-        name: entry.name,
-        fileCount,
-      });
+      topLevelDirectories.push({ name: entry.name, fileCount });
       continue;
     }
 
@@ -167,8 +195,8 @@ async function buildManifest(mirrorRoot) {
   };
 }
 
-async function buildQuickLinks(mirrorRoot) {
-  const candidates = [
+async function buildQuickLinks(mirrorRoot: string): Promise<QuickLink[]> {
+  const candidates: QuickLink[] = [
     { label: "Mirrored upstream index", target: "README.md" },
     { label: "Introduction", target: "tutorial/introduction.md" },
     { label: "API: app", target: "api/app.md" },
@@ -176,7 +204,7 @@ async function buildQuickLinks(mirrorRoot) {
     { label: "Breaking changes", target: "breaking-changes.md" },
     { label: "Development index", target: "development/README.md" },
   ];
-  const quickLinks = [];
+  const quickLinks: QuickLink[] = [];
 
   for (const candidate of candidates) {
     const fullPath = join(mirrorRoot, candidate.target);
@@ -189,7 +217,7 @@ async function buildQuickLinks(mirrorRoot) {
   return quickLinks;
 }
 
-function renderOfflineIndex(metadata, manifest) {
+function renderOfflineIndex(metadata: Metadata, manifest: Manifest): string {
   const directoryLines = manifest.topLevelDirectories.map((entry) => `- ${entry.name}: ${entry.fileCount} Markdown files`);
   const topLevelFileLines = manifest.topLevelFiles.map((fileName) => `- ${fileName}`);
   const quickLinkLines = manifest.quickLinks.map((entry) => `- [${entry.label}](./electron/${entry.target})`);
@@ -224,8 +252,8 @@ function renderOfflineIndex(metadata, manifest) {
   ].join("\n");
 }
 
-async function collectMarkdownFiles(rootDir) {
-  const results = [];
+async function collectMarkdownFiles(rootDir: string): Promise<string[]> {
+  const results: string[] = [];
   const entries = await readdir(rootDir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -244,7 +272,7 @@ async function collectMarkdownFiles(rootDir) {
   return results;
 }
 
-async function countMarkdownFiles(rootDir) {
+async function countMarkdownFiles(rootDir: string): Promise<number> {
   const entries = await readdir(rootDir, { withFileTypes: true });
   let count = 0;
 
@@ -264,7 +292,7 @@ async function countMarkdownFiles(rootDir) {
   return count;
 }
 
-async function pathExists(filePath) {
+async function pathExists(filePath: string): Promise<boolean> {
   try {
     await stat(filePath);
     return true;
@@ -273,7 +301,7 @@ async function pathExists(filePath) {
   }
 }
 
-function compareSemverTags(left, right) {
+function compareSemverTags(left: string, right: string): number {
   const leftParts = left.slice(1).split(".").map(Number);
   const rightParts = right.slice(1).split(".").map(Number);
 
@@ -288,13 +316,12 @@ function compareSemverTags(left, right) {
   return 0;
 }
 
-async function execGit(args) {
-  return execFile("git", args, {
-    maxBuffer: 20 * 1024 * 1024,
-  });
+async function execGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const result = await execFile("git", args, { maxBuffer: 20 * 1024 * 1024 });
+  return result as { stdout: string; stderr: string };
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

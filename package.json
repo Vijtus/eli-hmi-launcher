@@ -1,8 +1,21 @@
 {
   "name": "eli-hmi-launcher",
   "private": true,
-  "type": "module",
+  "main": "out/main/index.js",
   "scripts": {
-    "sync:electron-docs": "node ./scripts/sync-electron-docs.mjs"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite dev",
+    "sync:electron-docs": "tsx ./scripts/sync-electron-docs.ts"
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "electron": "40.10.0",
+    "electron-vite": "^5.0.0",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
   }
 }
