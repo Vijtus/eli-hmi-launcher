@@ -1,18 +1,27 @@
-const state = {
+import type { LaunchableItem, MenuNode } from "../shared/types";
+
+type AppState = {
+  appName: string;
+  menu: MenuNode[];
+  path: number[];
+  mode: "tiles" | "tree";
+};
+
+const state: AppState = {
   appName: "ELI HMI Launcher",
   menu: [],
   path: [],
   mode: "tiles",
 };
 
-const appTitle = document.getElementById("app-title");
-const mainElement = document.querySelector("main");
-const tilesView = document.getElementById("tiles-view");
-const treeView = document.getElementById("tree-view");
-const tilesButton = document.getElementById("tiles-button");
-const treeButton = document.getElementById("tree-button");
+const appTitle = document.getElementById("app-title") as HTMLHeadingElement;
+const mainElement = document.querySelector("main") as HTMLElement;
+const tilesView = document.getElementById("tiles-view") as HTMLElement;
+const treeView = document.getElementById("tree-view") as HTMLElement;
+const tilesButton = document.getElementById("tiles-button") as HTMLButtonElement;
+const treeButton = document.getElementById("tree-button") as HTMLButtonElement;
 
-function setError(message) {
+function setError(message: string): void {
   const existingError = document.getElementById("error-banner");
 
   if (!message) {
@@ -32,16 +41,16 @@ function setError(message) {
   mainElement.prepend(errorBanner);
 }
 
-function createButton(label, onClick) {
+function createButton(label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
 }
 
-function getNodeByPath() {
+function getNodeByPath(): { currentNode: MenuNode | null; currentNodes: MenuNode[] } {
   let currentNodes = state.menu;
-  let currentNode = null;
+  let currentNode: MenuNode | null = null;
 
   for (const index of state.path) {
     currentNode = currentNodes[index] ?? null;
@@ -53,13 +62,10 @@ function getNodeByPath() {
     currentNodes = Array.isArray(currentNode.children) ? currentNode.children : [];
   }
 
-  return {
-    currentNode,
-    currentNodes,
-  };
+  return { currentNode, currentNodes };
 }
 
-async function launchItem(item) {
+async function launchItem(item: LaunchableItem): Promise<void> {
   try {
     if (!window.launcherApi?.launchItem) {
       throw new Error("Launcher API is unavailable. Check that the preload script loaded correctly.");
@@ -73,11 +79,11 @@ async function launchItem(item) {
   }
 }
 
-function renderBreadcrumbs(container) {
+function renderBreadcrumbs(container: HTMLElement): void {
   const breadcrumbs = document.createElement("div");
   breadcrumbs.className = "breadcrumbs";
 
-  function appendBreadcrumb(label, onClick, isCurrent = false) {
+  function appendBreadcrumb(label: string, onClick: () => void, isCurrent = false): void {
     if (breadcrumbs.childElementCount > 0) {
       const separator = document.createElement("span");
       separator.className = "breadcrumb-separator";
@@ -114,7 +120,7 @@ function renderBreadcrumbs(container) {
   );
 
   let nodes = state.menu;
-  const pathSoFar = [];
+  const pathSoFar: number[] = [];
 
   for (const [pathIndex, index] of state.path.entries()) {
     const node = nodes[index];
@@ -139,7 +145,7 @@ function renderBreadcrumbs(container) {
   container.appendChild(breadcrumbs);
 }
 
-function renderTiles() {
+function renderTiles(): void {
   tilesView.innerHTML = "";
   renderBreadcrumbs(tilesView);
 
@@ -185,7 +191,7 @@ function renderTiles() {
   tilesView.appendChild(grid);
 }
 
-function renderTreeNodes(nodes) {
+function renderTreeNodes(nodes: MenuNode[]): HTMLUListElement {
   const list = document.createElement("ul");
   list.className = "tree-list";
 
@@ -236,12 +242,12 @@ function renderTreeNodes(nodes) {
   return list;
 }
 
-function renderTree() {
+function renderTree(): void {
   treeView.innerHTML = "";
   treeView.appendChild(renderTreeNodes(state.menu));
 }
 
-function render() {
+function render(): void {
   tilesButton.classList.toggle("active", state.mode === "tiles");
   treeButton.classList.toggle("active", state.mode === "tree");
   tilesView.classList.toggle("active", state.mode === "tiles");
@@ -260,7 +266,7 @@ treeButton.addEventListener("click", () => {
   render();
 });
 
-async function initialize() {
+async function initialize(): Promise<void> {
   try {
     if (!window.launcherApi?.getConfig) {
       throw new Error("Launcher API is unavailable. Check that the preload script loaded correctly.");
