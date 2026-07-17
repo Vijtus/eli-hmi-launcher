@@ -1,4 +1,4 @@
-import type { LauncherConfig, LaunchResult } from "../../shared/types";
+import type { LauncherConfig, LaunchResult } from "../shared/types";
 
 declare global {
   interface Window {

@@ -1,32 +1,239 @@
-appName: ELI Control Systems Launcher
-menu:
-  - label: L2
-    children:
-      - label: Motion
-        launchables:
-          - id: motion-web
-            label: Motion HMI (Web)
-            description: Open motion dashboard in default browser
-            type: web
-            url: "https://example.local/motion"
-          - id: motion-local-exe
-            label: Motion Local HMI
-            description: Launch local motion executable from PATH
-            type: executable
-            command: "code"
-      - label: Vacuum
-        launchables:
-          - id: vacuum-web
-            label: Vacuum HMI (Web)
-            type: web
-            url: "https://example.local/vacuum"
-  - label: Utilities
-    launchables:
-      - id: historian
-        label: Historian Viewer
-        description: Open machine historian executable
-        type: executable
-        command: "HistorianViewer.exe"
+appName: L4 Launcher
+
+# ---------------------------------------------------------------------------
+# Runnable MVP config. Process targets use the bundled mock launcher scripts so
+# the launcher can be tested immediately without LabVIEW / Phoebus / L4 paths.
+# Mock launches append to <OS-temp>/eli-hmi-launcher-mock.log.
+#
+# For a real deployment, copy config/launcher.example-real.yaml and replace the
+# commands/URLs/paths with real L4 values. See CONFIG_SCHEMA.md for the full
+# schema and the security model.
+# ---------------------------------------------------------------------------
+
+# Security policy for process targets (see CONFIG_SCHEMA.md > Security).
+#   allowedCommandRoots : a resolved process `command` that contains a path must
+#                         live under one of these directories, or the launch is
+#                         refused. Empty list = no directory restriction.
+#   allowBareCommands   : allow bare command names resolved via the OS PATH
+#                         (e.g. `cmd.exe`, `sh`). Set false in hardened setups.
+# The Linux mock command below is an absolute path INSIDE the allowed root, so
+# it demonstrates the allow-list. The Windows override uses `cmd.exe` (a bare
+# name) because .cmd scripts cannot be spawned without a shell/interpreter;
+# that requires allowBareCommands: true. See launcher.example-real.yaml for the
+# stricter production posture.
+security:
+  allowedCommandRoots:
+    - ${APP_ROOT}/examples/launchers
+  allowBareCommands: true
+
+entries:
+  - id: l4-cis-vcs
+    name: L4 CIS VCS
+    technology: Vacuum
+    section: L4 CIS
+    platform: CSS
+    rmc: --
+    note: --
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - L4 CIS VCS
+      windows:
+        command: cmd.exe
         args:
-          - "--mode"
-          - "operator"
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - L4 CIS VCS
+
+  - id: l4fbt-vcs
+    name: L4fBT VCS
+    technology: Vacuum
+    section: L4fBT
+    platform: CSS
+    rmc: --
+    note: --
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - L4fBT VCS
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - L4fBT VCS
+
+  - id: camera-manager-alena
+    name: Camera Manager Alena
+    technology: Cameras
+    section: L4b; L4c
+    platform: LabVIEW
+    rmc: RMC403
+    note: Cam XYZ, Cam ABC, Cam 45-X
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Camera Manager Alena
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Camera Manager Alena
+
+  - id: pa1-trigger-fanout
+    name: PA1 Trigger Fanout
+    technology: Timing
+    section: L4b
+    platform: LabVIEW
+    rmc: RMC403
+    note: --
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - PA1 Trigger Fanout
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - PA1 Trigger Fanout
+
+  - id: piggyback-pointing
+    name: Piggyback Pointing
+    technology: Pointing
+    section: L4b
+    platform: LabVIEW
+    rmc: RMC403
+    note: --
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Piggyback Pointing
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Piggyback Pointing
+
+  - id: holzworth-hs9000
+    name: Holzworth HS9000
+    technology: Timing
+    section: L4c
+    platform: LabVIEW
+    rmc: RMC409
+    note: --
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Holzworth HS9000
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Holzworth HS9000
+
+  - id: camera-manager-peter
+    name: Camera Manager Peter
+    technology: Cameras
+    section: L4b; L4c
+    platform: LabVIEW
+    rmc: RMC417
+    note: Cam 48-O, Cam FDL
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Camera Manager Peter
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Camera Manager Peter
+
+  - id: opcpa-laser
+    name: OPCPA Laser
+    technology: Laser; Timing
+    section: L4c
+    platform: Web
+    rmc: --
+    note: --
+    target:
+      kind: web
+      url: https://example.local/opcpa-laser
+
+  - id: l4-phoebus-vacuum-overview
+    name: L4 Phoebus Vacuum Overview
+    technology: Vacuum
+    section: L4
+    platform: Phoebus
+    rmc: --
+    note: Example Phoebus GUI row
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - L4 Phoebus Vacuum Overview
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - L4 Phoebus Vacuum Overview
+
+quickActions:
+  - id: data-browser
+    label: Data Browser
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Phoebus Data Browser
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Phoebus Data Browser
+
+  - id: alarm-system
+    label: Alarm System
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Phoebus Alarm System L4 layout
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Phoebus Alarm System L4 layout
+
+moreActions:
+  - id: sequencer
+    label: Sequencer
+    target:
+      kind: web
+      url: https://example.local/sequencer
+
+  - id: safety-diagnostics
+    label: Safety Diagnostics
+    target:
+      kind: web
+      url: https://example.local/safety-diagnostics
+
+  - id: network-shared-folder
+    label: Network Shared Folder
+    target:
+      kind: folder
+      path: ${APP_ROOT}

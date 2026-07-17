@@ -1,21 +1,26 @@
 {
   "name": "eli-hmi-launcher",
   "private": true,
+  "version": "0.2.2-mvp",
+  "description": "Minimal L4 control systems GUI launcher built with Electron and a YAML configuration table.",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
     "start": "electron-vite dev",
-    "sync:electron-docs": "tsx ./scripts/sync-electron-docs.ts"
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc -b",
+    "validate-config": "tsx scripts/validate-config.ts",
+    "check": "tsc -b && electron-vite build"
   },
   "dependencies": {
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "25.9.1",
     "electron": "40.10.0",
-    "electron-vite": "^5.0.0",
-    "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "electron-vite": "5.0.0",
+    "tsx": "4.22.3",
+    "typescript": "6.0.3"
   }
 }
