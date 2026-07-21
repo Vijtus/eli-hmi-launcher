@@ -3,24 +3,60 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ELI HMI Launcher</title>
+    <title>L4 Launcher</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="top-bar">
-      <div>
-        <h1 id="app-title">ELI HMI Launcher</h1>
-        <p class="subtitle">Control systems GUI launcher</p>
-      </div>
-      <div class="view-switch">
-        <button id="tiles-button" class="active">Tiles</button>
-        <button id="tree-button">Tree</button>
-      </div>
+    <header class="app-header">
+      <h1 id="app-title">L4 Launcher</h1>
+      <nav id="quick-actions" class="quick-actions" aria-label="Launcher actions"></nav>
     </header>
 
     <main>
-      <section id="tiles-view" class="view active"></section>
-      <section id="tree-view" class="view"></section>
+      <section class="filters" aria-label="GUI filters">
+        <label>
+          <span>Search</span>
+          <input id="search-input" type="search" placeholder="Search name, technology, section, RMC, note..." autocomplete="off" />
+        </label>
+        <label>
+          <span>Technology</span>
+          <select id="technology-filter">
+            <option value="">Select</option>
+          </select>
+        </label>
+        <label>
+          <span>Section</span>
+          <select id="section-filter">
+            <option value="">Select</option>
+          </select>
+        </label>
+        <label>
+          <span>Platform</span>
+          <select id="platform-filter">
+            <option value="">Select</option>
+          </select>
+        </label>
+      </section>
+
+      <section id="status-banner" class="status-banner" hidden></section>
+
+      <section class="table-panel" aria-label="Configured GUIs">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Technology</th>
+              <th>Section</th>
+              <th>Platform</th>
+              <th>RMC</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="launcher-rows"></tbody>
+        </table>
+      </section>
+
+      <p id="row-count" class="row-count"></p>
     </main>
 
     <script type="module" src="./app.ts"></script>

@@ -1,269 +1,305 @@
-import type { LaunchableItem, MenuNode } from "../shared/types";
+import type { LauncherAction, LauncherConfig, LauncherRow } from "../shared/types";
+
+type MultiValueFilterKey = "technology" | "section";
 
 type AppState = {
   appName: string;
-  menu: MenuNode[];
-  path: number[];
-  mode: "tiles" | "tree";
+  rows: LauncherRow[];
+  quickActions: LauncherAction[];
+  moreActions: LauncherAction[];
+  search: string;
+  technology: string;
+  section: string;
+  platform: string;
 };
 
 const state: AppState = {
-  appName: "ELI HMI Launcher",
-  menu: [],
-  path: [],
-  mode: "tiles",
+  appName: "L4 Launcher",
+  rows: [],
+  quickActions: [],
+  moreActions: [],
+  search: "",
+  technology: "",
+  section: "",
+  platform: "",
 };
 
 const appTitle = document.getElementById("app-title") as HTMLHeadingElement;
-const mainElement = document.querySelector("main") as HTMLElement;
-const tilesView = document.getElementById("tiles-view") as HTMLElement;
-const treeView = document.getElementById("tree-view") as HTMLElement;
-const tilesButton = document.getElementById("tiles-button") as HTMLButtonElement;
-const treeButton = document.getElementById("tree-button") as HTMLButtonElement;
+const quickActionsElement = document.getElementById("quick-actions") as HTMLElement;
+const searchInput = document.getElementById("search-input") as HTMLInputElement;
+const technologyFilter = document.getElementById("technology-filter") as HTMLSelectElement;
+const sectionFilter = document.getElementById("section-filter") as HTMLSelectElement;
+const platformFilter = document.getElementById("platform-filter") as HTMLSelectElement;
+const statusBanner = document.getElementById("status-banner") as HTMLElement;
+const rowsElement = document.getElementById("launcher-rows") as HTMLTableSectionElement;
+const rowCountElement = document.getElementById("row-count") as HTMLParagraphElement;
 
-function setError(message: string): void {
-  const existingError = document.getElementById("error-banner");
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
 
+function displayList(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "--";
+}
+
+function setStatus(message: string, isError = false): void {
   if (!message) {
-    existingError?.remove();
+    statusBanner.hidden = true;
+    statusBanner.textContent = "";
+    statusBanner.classList.remove("error");
     return;
   }
 
-  if (existingError) {
-    existingError.textContent = message;
-    return;
-  }
-
-  const errorBanner = document.createElement("section");
-  errorBanner.id = "error-banner";
-  errorBanner.className = "error-banner";
-  errorBanner.textContent = message;
-  mainElement.prepend(errorBanner);
+  statusBanner.hidden = false;
+  statusBanner.textContent = message;
+  statusBanner.classList.toggle("error", isError);
 }
 
 function createButton(label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
+  button.type = "button";
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
 }
 
-function getNodeByPath(): { currentNode: MenuNode | null; currentNodes: MenuNode[] } {
-  let currentNodes = state.menu;
-  let currentNode: MenuNode | null = null;
-
-  for (const index of state.path) {
-    currentNode = currentNodes[index] ?? null;
-
-    if (!currentNode) {
-      break;
-    }
-
-    currentNodes = Array.isArray(currentNode.children) ? currentNode.children : [];
-  }
-
-  return { currentNode, currentNodes };
-}
-
-async function launchItem(item: LaunchableItem): Promise<void> {
+async function launchItem(itemId: string, label: string): Promise<void> {
   try {
     if (!window.launcherApi?.launchItem) {
       throw new Error("Launcher API is unavailable. Check that the preload script loaded correctly.");
     }
 
-    await window.launcherApi.launchItem(item.id);
-    setError("");
+    const result = await window.launcherApi.launchItem(itemId);
+    if (result.ok) {
+      // "request sent" (not "launched"): process targets are fire-and-forget,
+      // so a successful spawn does not guarantee the GUI stayed up.
+      setStatus(`Launch request sent: ${label}`);
+    } else {
+      setStatus(`Launch failed: ${label} — ${result.error}`, true);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setError(`Launch failed: ${message}`);
+    setStatus(`Launch failed: ${message}`, true);
   }
 }
 
-function renderBreadcrumbs(container: HTMLElement): void {
-  const breadcrumbs = document.createElement("div");
-  breadcrumbs.className = "breadcrumbs";
-
-  function appendBreadcrumb(label: string, onClick: () => void, isCurrent = false): void {
-    if (breadcrumbs.childElementCount > 0) {
-      const separator = document.createElement("span");
-      separator.className = "breadcrumb-separator";
-      separator.textContent = ">";
-      breadcrumbs.appendChild(separator);
-    }
-
-    if (isCurrent) {
-      const current = document.createElement("span");
-      current.className = "breadcrumb-current";
-      current.textContent = label;
-      breadcrumbs.appendChild(current);
-      return;
-    }
-
-    const link = document.createElement("a");
-    link.className = "breadcrumb-link";
-    link.href = "#";
-    link.textContent = label;
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      onClick();
-    });
-    breadcrumbs.appendChild(link);
+function matchesSearch(row: LauncherRow): boolean {
+  const query = normalize(state.search);
+  if (!query) {
+    return true;
   }
 
-  appendBreadcrumb(
-    "Root",
-    () => {
-      state.path = [];
-      render();
-    },
-    state.path.length === 0,
+  const haystack = normalize(
+    [row.name, displayList(row.technology), displayList(row.section), row.platform, row.rmc, row.note].join(" "),
   );
 
-  let nodes = state.menu;
-  const pathSoFar: number[] = [];
-
-  for (const [pathIndex, index] of state.path.entries()) {
-    const node = nodes[index];
-
-    if (!node) {
-      break;
-    }
-
-    pathSoFar.push(index);
-    const breadcrumbPath = [...pathSoFar];
-    appendBreadcrumb(
-      node.label ?? "Group",
-      () => {
-        state.path = breadcrumbPath;
-        render();
-      },
-      pathIndex === state.path.length - 1,
-    );
-    nodes = Array.isArray(node.children) ? node.children : [];
-  }
-
-  container.appendChild(breadcrumbs);
+  return haystack.includes(query);
 }
 
-function renderTiles(): void {
-  tilesView.innerHTML = "";
-  renderBreadcrumbs(tilesView);
+function matchesFilters(row: LauncherRow): boolean {
+  const technologyMatches = !state.technology || row.technology.includes(state.technology);
+  const sectionMatches = !state.section || row.section.includes(state.section);
+  const platformMatches = !state.platform || row.platform === state.platform;
 
-  const { currentNode, currentNodes } = getNodeByPath();
-  const visibleGroups = state.path.length === 0 ? state.menu : currentNodes;
-  const launchables = Array.isArray(currentNode?.launchables) ? currentNode.launchables : [];
-  const grid = document.createElement("div");
-  grid.className = "tiles-grid";
+  return technologyMatches && sectionMatches && platformMatches;
+}
 
-  for (const [index, group] of visibleGroups.entries()) {
-    const tile = document.createElement("div");
-    tile.className = "tile";
-    const title = document.createElement("h3");
-    title.textContent = group.label ?? "Group";
-    const description = document.createElement("p");
-    description.textContent = "Open group";
-    tile.append(
-      title,
-      description,
-      createButton("Open", () => {
-        state.path = [...state.path, index];
-        render();
+function getFilteredRows(): LauncherRow[] {
+  return state.rows.filter((row) => matchesSearch(row) && matchesFilters(row));
+}
+
+function getUniqueMultiValues(rows: LauncherRow[], key: MultiValueFilterKey): string[] {
+  const values = new Set<string>();
+
+  for (const row of rows) {
+    for (const value of row[key]) {
+      if (value && value !== "--") {
+        values.add(value);
+      }
+    }
+  }
+
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function getUniquePlatformValues(rows: LauncherRow[]): string[] {
+  const values = new Set<string>();
+
+  for (const row of rows) {
+    if (row.platform && row.platform !== "--") {
+      values.add(row.platform);
+    }
+  }
+
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function populateSelect(select: HTMLSelectElement, values: string[]): void {
+  const currentValue = select.value;
+  select.innerHTML = "";
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "Select";
+  select.appendChild(defaultOption);
+
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  }
+
+  if (values.includes(currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function closeMoreMenu(): void {
+  const menu = quickActionsElement.querySelector<HTMLElement>(".more-menu");
+  if (menu) {
+    menu.hidden = true;
+  }
+}
+
+function renderQuickActions(): void {
+  quickActionsElement.innerHTML = "";
+
+  for (const action of state.quickActions) {
+    quickActionsElement.appendChild(createButton(action.label, () => void launchItem(action.id, action.label)));
+  }
+
+  if (state.moreActions.length === 0) {
+    return;
+  }
+
+  const moreWrapper = document.createElement("div");
+  moreWrapper.className = "more-wrapper";
+
+  const moreMenu = document.createElement("div");
+  moreMenu.className = "more-menu";
+  moreMenu.hidden = true;
+
+  const moreButton = createButton("More...", () => {
+    moreMenu.hidden = !moreMenu.hidden;
+  });
+
+  for (const action of state.moreActions) {
+    moreMenu.appendChild(
+      createButton(action.label, () => {
+        moreMenu.hidden = true;
+        void launchItem(action.id, action.label);
       }),
     );
-    grid.appendChild(tile);
   }
 
-  for (const item of launchables) {
-    const tile = document.createElement("div");
-    tile.className = "tile";
-    const title = document.createElement("h3");
-    title.textContent = item.label ?? item.id;
-    const description = document.createElement("p");
-    description.textContent = item.description ?? `${item.type} launchable`;
-    tile.append(
-      title,
-      description,
-      createButton("Launch", () => launchItem(item)),
-    );
-    grid.appendChild(tile);
-  }
-
-  tilesView.appendChild(grid);
+  moreWrapper.append(moreButton, moreMenu);
+  quickActionsElement.appendChild(moreWrapper);
 }
 
-function renderTreeNodes(nodes: MenuNode[]): HTMLUListElement {
-  const list = document.createElement("ul");
-  list.className = "tree-list";
+function appendCell(rowElement: HTMLTableRowElement, value: string, className?: string): void {
+  const cell = document.createElement("td");
+  cell.textContent = value || "--";
 
-  for (const node of nodes) {
-    const branch = document.createElement("li");
-    branch.className = "tree-branch";
-    const launchables = Array.isArray(node.launchables) ? node.launchables : [];
-    const children = Array.isArray(node.children) ? node.children : [];
-
-    if (launchables.length > 0 || children.length > 0) {
-      const details = document.createElement("details");
-      details.className = "tree-node";
-
-      const summary = document.createElement("summary");
-      summary.className = "branch-label";
-      summary.textContent = node.label ?? "Group";
-      details.appendChild(summary);
-
-      const content = document.createElement("div");
-      content.className = "tree-node-content";
-
-      for (const item of launchables) {
-        const row = document.createElement("div");
-        row.className = "launch-item";
-        const launchButton = createButton(item.label ?? item.id, () => launchItem(item));
-        row.appendChild(launchButton);
-        content.appendChild(row);
-      }
-
-      if (children.length > 0) {
-        content.appendChild(renderTreeNodes(children));
-      }
-
-      details.appendChild(content);
-      branch.appendChild(details);
-      list.appendChild(branch);
-      continue;
-    }
-
-    const label = document.createElement("p");
-    label.className = "branch-label";
-    label.textContent = node.label ?? "Group";
-    branch.appendChild(label);
-
-    list.appendChild(branch);
+  if (className) {
+    cell.className = className;
   }
 
-  return list;
+  rowElement.appendChild(cell);
 }
 
-function renderTree(): void {
-  treeView.innerHTML = "";
-  treeView.appendChild(renderTreeNodes(state.menu));
+function renderRows(): void {
+  const rows = getFilteredRows();
+  rowsElement.innerHTML = "";
+
+  if (rows.length === 0) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = 6;
+    emptyCell.className = "empty-row";
+    emptyCell.textContent = "No GUIs match the current filters.";
+    emptyRow.appendChild(emptyCell);
+    rowsElement.appendChild(emptyRow);
+    rowCountElement.textContent = `0 / ${state.rows.length} GUIs`;
+    return;
+  }
+
+  for (const row of rows) {
+    const rowElement = document.createElement("tr");
+    rowElement.tabIndex = 0;
+    rowElement.title = `Launch ${row.name}`;
+    rowElement.addEventListener("click", () => void launchItem(row.id, row.name));
+    rowElement.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        void launchItem(row.id, row.name);
+      }
+    });
+
+    appendCell(rowElement, row.name, "name-cell");
+    appendCell(rowElement, displayList(row.technology));
+    appendCell(rowElement, displayList(row.section));
+    appendCell(rowElement, row.platform);
+    appendCell(rowElement, row.rmc);
+    appendCell(rowElement, row.note);
+    rowsElement.appendChild(rowElement);
+  }
+
+  rowCountElement.textContent = `${rows.length} / ${state.rows.length} GUIs`;
 }
 
 function render(): void {
-  tilesButton.classList.toggle("active", state.mode === "tiles");
-  treeButton.classList.toggle("active", state.mode === "tree");
-  tilesView.classList.toggle("active", state.mode === "tiles");
-  treeView.classList.toggle("active", state.mode === "tree");
-  renderTiles();
-  renderTree();
+  renderRows();
 }
 
-tilesButton.addEventListener("click", () => {
-  state.mode = "tiles";
+function applyConfig(config: LauncherConfig): void {
+  state.appName = config.appName || state.appName;
+  state.rows = Array.isArray(config.rows) ? config.rows : [];
+  state.quickActions = Array.isArray(config.quickActions) ? config.quickActions : [];
+  state.moreActions = Array.isArray(config.moreActions) ? config.moreActions : [];
+
+  appTitle.textContent = state.appName;
+  populateSelect(technologyFilter, getUniqueMultiValues(state.rows, "technology"));
+  populateSelect(sectionFilter, getUniqueMultiValues(state.rows, "section"));
+  populateSelect(platformFilter, getUniquePlatformValues(state.rows));
+  renderQuickActions();
+  render();
+}
+
+searchInput.addEventListener("input", () => {
+  state.search = searchInput.value;
   render();
 });
 
-treeButton.addEventListener("click", () => {
-  state.mode = "tree";
+technologyFilter.addEventListener("change", () => {
+  state.technology = technologyFilter.value;
   render();
+});
+
+sectionFilter.addEventListener("change", () => {
+  state.section = sectionFilter.value;
+  render();
+});
+
+platformFilter.addEventListener("change", () => {
+  state.platform = platformFilter.value;
+  render();
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Node) || quickActionsElement.contains(target)) {
+    return;
+  }
+
+  closeMoreMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeMoreMenu();
+  }
 });
 
 async function initialize(): Promise<void> {
@@ -273,15 +309,12 @@ async function initialize(): Promise<void> {
     }
 
     const config = await window.launcherApi.getConfig();
-    state.appName = config.appName ?? state.appName;
-    state.menu = Array.isArray(config.menu) ? config.menu : [];
-    appTitle.textContent = state.appName;
-    setError("");
-    render();
+    setStatus("");
+    applyConfig(config);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setError(`Config load failed: ${message}`);
+    setStatus(`Config load failed: ${message}`, true);
   }
 }
 
-initialize();
+void initialize();
