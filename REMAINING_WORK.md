@@ -19,10 +19,22 @@ supplied by L4 users / control-system maintainers before this leaves mock mode:
 Once supplied, populate `config/launcher.example-real.yaml`, deploy it read-only,
 and run `npm run validate-config -- config/launcher.example-real.yaml`.
 
+To collect the data at scale, hand `intake/L4_GUI_INTAKE.csv` to GUI owners and
+convert completed sheets with `npm run intake-to-yaml -- <csv> -o converted.yaml`
+(then validate and merge). The workflow and template exist; the **real values**
+remain the external blocker.
+
+**Logo:** the header uses a text wordmark (`L4 LAUNCHER`). No official ELI/L4
+image asset was supplied, and none was invented. If maintainers provide one,
+replace the `<h1>` wordmark in `src/renderer/index.html` with the image and
+preserve its aspect ratio; otherwise the text wordmark stays.
+
 ## Assumptions made in this iteration
 
-1. **Platform vs Technology** are distinct axes (domain vs runtime). Kept both
-   from 0.1.0; confidence high — conflating them would rot the filters.
+1. **Platform vs Technology** are distinct axes (domain vs runtime). Both are
+   kept as data/columns; since 0.3.0 only Technology and Section are filters
+   (per user feedback) and Platform is display-only. Conflating the axes in the
+   data model would still rot it, so both fields stay.
 2. **RMC is optional**; empty renders as `--`. Confidence high.
 3. `technology`/`section` remain semicolon-or-list. YAML lists (`[L4b, L4c]`) are
    also accepted and are the cleaner form; the semicolon string is retained for
@@ -49,8 +61,10 @@ and run `npm run validate-config -- config/launcher.example-real.yaml`.
   `allowBareCommands: true`) or a real `.exe` wrapper. The strict example is
   therefore Linux-oriented; a Windows site should choose `.exe` wrappers or the
   documented `cmd.exe` form. Not auto-resolved — deliberately left to the site.
-- **Fire-and-forget launches.** "Success" = the OS accepted the spawn, not that
-  the GUI stayed up. Running-state detection is explicitly v1-out-of-scope.
+- **Fire-and-forget after startup.** Missing executables and immediate non-zero
+  exits are reported during a 500 ms startup window. After that, success means
+  the OS accepted the launch; long-term GUI running-state detection remains
+  explicitly v1-out-of-scope.
 - **World-writable check is POSIX-only** ("where supported"); Windows ACLs are
   not inspected. Deploy Windows configs with appropriate NTFS permissions.
 - **No packaging/installer.** `npm run build` produces `./out` (electron-vite),
@@ -65,7 +79,15 @@ and run `npm run validate-config -- config/launcher.example-real.yaml`.
    security posture accordingly.
 3. Decide the config distribution mechanism (read-only deploy path, ownership,
    update process) — this is the real security control.
-4. Optional: add a lightweight automated test target (the validation exercised
-   here can be scripted into `npm test`).
-5. Backlog (only if requested): LabVIEW running-state detection, in-app config
+4. Supply the official ELI/L4 logo asset if the text wordmark should be replaced
+   by an image. The current wordmark is larger and aligned, but no brand artwork
+   was invented.
+5. Automate the Electron smoke test in CI. It was run **manually** under
+   Linux/Xvfb for this pass (app boot, filter open/keyboard nav, silent success,
+   invalid-path error, narrow-width layout — see FINAL_VERIFICATION.md), but the
+   automated suite still covers only pure logic (filtering, launch-path
+   validation, intake conversion, combobox type-ahead) plus build and config
+   validation in CI. A headless Playwright-for-Electron run would lock the UI
+   behaviour in.
+6. Backlog (only if requested): LabVIEW running-state detection, in-app config
    editing, packaging/auto-update.

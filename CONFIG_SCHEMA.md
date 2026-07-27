@@ -37,13 +37,13 @@ generated from the name/label (prefer explicit ids).
 Field semantics:
 
 - **technology** = domain/function (Vacuum, Cameras, Timing, Pointing, Laser).
-- **platform** = implementation/runtime (LabVIEW, Phoebus, Web, CSS). This split
-  is intentional and is why both a Technology and a Platform filter exist.
-- **technology** and **section** accept either a plain string or a
-  semicolon-separated string (`"L4b; L4c"`), or a YAML list (`[L4b, L4c]`). All
-  three parse to a list; the list feeds the filter dropdowns. Empty / `--`
-  becomes an empty list.
-- **search** matches name, technology, section, platform, rmc, and note.
+- **platform** = implementation/runtime (LabVIEW, Phoebus, Web, CSS). The split
+  is intentional; platform is shown as a table column but is **not** a filter.
+- **Filtering is by Technology and Section only.** **technology** and
+  **section** accept either a plain string or a semicolon-separated string
+  (`"L4b; L4c"`), or a YAML list (`[L4b, L4c]`). All three parse to a list; the
+  list feeds the two filter dropdowns. Empty / `--` becomes an empty list.
+- **search** matches **name** and **note** only.
 
 ## Targets
 
@@ -167,6 +167,9 @@ are accepted.
 - All ids are unique across entries + quickActions + moreActions.
 - On POSIX, the config file is not world-writable (unless overridden).
 
-Command allow-listing and folder-existence are enforced **at launch** (they are
-platform/runtime specific), and every launch outcome is written to the launch
-log.
+Command allow-listing and filesystem checks are enforced **at launch** because
+they are platform/runtime specific. Command paths must resolve to files (and be
+executable on POSIX), `cwd` must be a directory, and folder targets must be
+readable directories. A process that exits non-zero during the 500 ms startup
+window is also reported as a launch failure. Every outcome is written to the
+launch log.

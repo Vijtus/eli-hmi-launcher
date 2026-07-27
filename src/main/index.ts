@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -12,6 +11,19 @@ import {
   type ParsedConfig,
 } from "./config";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
+import {
+  assertCommandPathUsable,
+  assertFolderPathUsable,
+  assertResolvedValueNotEmpty,
+  assertWorkingDirectoryUsable,
+} from "./launch-validation";
+import {
+  folderLaunchError,
+  launchErrorCode,
+  processLaunchError,
+  webLaunchError,
+} from "./launch-errors";
+import { spawnDetached } from "./process-launcher";
 import type {
   LaunchResult,
   LaunchTarget,
@@ -108,8 +120,9 @@ function baseWebPreferences(): Electron.WebPreferences {
 
 function createMainWindow(): void {
   const window = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: 1405,
+    height: 851,
+    useContentSize: true,
     minWidth: 1024,
     minHeight: 680,
     autoHideMenuBar: true,
@@ -137,18 +150,21 @@ function showConfigErrorWindow(message: string, configPath: string | undefined):
   const window = new BrowserWindow({
     width: 780,
     height: 520,
+    backgroundColor: "#000000",
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>L4 Launcher — configuration error</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>L4 Launcher — configuration error</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #140000; color: #fff; padding: 1.5rem 1.75rem; }
+  :root { color-scheme: dark; background: #000000; color: #ffffff; }
+  body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #000000; color: #ffffff; padding: 1.5rem 1.75rem; }
   h1 { font-size: 1.1rem; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 1rem; }
-  .msg { border: 1px solid #ff6b6b; background: #240404; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-family: "Cascadia Code", Consolas, monospace; font-size: .92rem; }
-  .path { color: #9fb4ff; margin: 1rem 0 .25rem; font-size: .85rem; }
-  ul { color: #cfcfcf; font-size: .9rem; line-height: 1.5; }
-  code { color: #ffd479; }
+  .msg { border: 2px solid #ffffff; background: #000000; color: #ffffff; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-family: "Cascadia Code", Consolas, monospace; font-size: .92rem; }
+  .path { color: #ffffff; margin: 1rem 0 .25rem; font-size: .85rem; }
+  ul { color: #ffffff; font-size: .9rem; line-height: 1.5; }
+  code { color: #ffffff; }
 </style></head><body>
   <h1>Launcher configuration error</h1>
   <div class="msg">${escapeHtml(message)}</div>
@@ -167,51 +183,71 @@ function showConfigErrorWindow(message: string, configPath: string | undefined):
 // ---------------------------------------------------------------------------
 
 async function launchWebTarget(url: string, context: LaunchContext): Promise<void> {
-  const parsed = assertWebUrlAllowed(url, context);
-  await shell.openExternal(parsed.toString());
-}
-
-function spawnDetached(command: string, args: string[], cwd: string | undefined, env: Record<string, string> | undefined): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const child = spawn(command, args, {
-      detached: true,
-      stdio: "ignore",
-      shell: false, // Never use a shell: args are passed as an argv array, so there is no shell parsing/injection.
-      cwd: cwd || undefined,
-      env: { ...process.env, ...(env ?? {}) },
-      windowsHide: true,
-    });
-    child.once("spawn", () => {
-      settled = true;
-      child.unref();
-      resolve();
-    });
-    child.once("error", (error) => {
-      if (settled) {
-        logEvent("error", "Launched process emitted an error after spawn", { command, error: error.message });
-        return;
-      }
-      settled = true;
-      reject(error);
-    });
-  });
+  let resolvedUrl = url;
+  try {
+    const parsed = assertWebUrlAllowed(url, context);
+    resolvedUrl = parsed.toString();
+    await shell.openExternal(resolvedUrl);
+  } catch (error) {
+    throw webLaunchError(resolvedUrl, error);
+  }
 }
 
 async function launchProcessTarget(target: ProcessLaunchTarget, context: LaunchContext): Promise<string> {
   const materialized = materializeProcessTarget(target, context);
+  assertResolvedValueNotEmpty(materialized.command, "process command");
+  if (materialized.cwd !== undefined) {
+    assertResolvedValueNotEmpty(materialized.cwd, "working directory");
+  }
+
   // Authoritative security gate: enforce the command allow-list against the
   // exact command that will be spawned on this platform.
   assertCommandAllowed(materialized.command, context.security);
-  await spawnDetached(materialized.command, materialized.args ?? [], materialized.cwd, materialized.env);
+
+  // Pre-flight checks so a bad config path produces a readable error instead of
+  // a raw ENOENT. A command with a path separator has already been resolved to
+  // an absolute path; a bare name is resolved via the OS PATH by spawn itself.
+  const hasSeparator = materialized.command.includes("/") || materialized.command.includes("\\");
+  if (hasSeparator) {
+    await assertCommandPathUsable(materialized.command);
+  }
+  if (materialized.cwd) {
+    await assertWorkingDirectoryUsable(materialized.cwd);
+  }
+
+  try {
+    await spawnDetached(materialized.command, materialized.args ?? [], materialized.cwd, materialized.env);
+  } catch (error) {
+    const code = launchErrorCode(error);
+    if (code === "ENOENT" || code === "EACCES" || code === "EPERM") {
+      // Re-check both paths so a directory or command changed after pre-flight
+      // is reported accurately instead of every ENOENT being blamed on PATH.
+      if (materialized.cwd) {
+        await assertWorkingDirectoryUsable(materialized.cwd);
+      }
+      if (hasSeparator) {
+        await assertCommandPathUsable(materialized.command);
+      }
+    }
+    throw processLaunchError(materialized.command, error);
+  }
   return materialized.command;
 }
 
 async function launchFolderTarget(folderPath: string, context: LaunchContext): Promise<void> {
   const materializedPath = resolveConfiguredPath(folderPath, context);
-  const message = await shell.openPath(materializedPath);
+  assertResolvedValueNotEmpty(materializedPath, "folder target");
+
+  await assertFolderPathUsable(materializedPath);
+
+  let message: string;
+  try {
+    message = await shell.openPath(materializedPath);
+  } catch (error) {
+    throw folderLaunchError(materializedPath, error);
+  }
   if (message) {
-    throw new Error(message);
+    throw folderLaunchError(materializedPath, message);
   }
 }
 
