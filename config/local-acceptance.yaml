@@ -68,34 +68,34 @@ entries:
       exeName: EPICS Contract.exe
 
   - id: local-phoebus-temperature
-    name: Local IOC Temperature
+    name: Laser / Regenerator Overview
     technology: Laser
     section: CSI-744 local
     platform: Phoebus
     rmc: --
-    note: Reads the supplied mock IOC temperature PV.
+    note: Read-only system status, diagnostics, and key measurements from the supplied mock IOC.
     target:
       kind: phoebus
       resource: temperature.bob
 
   - id: local-phoebus-state
-    name: Local IOC State
+    name: Flashlamp / Timing Control
     technology: Laser
     section: CSI-744 local
     platform: Phoebus
     rmc: --
-    note: Reads the supplied mock IOC state PV.
+    note: Structured timing controls and the seven-by-two flashlamp state matrix; writes affect the mock only.
     target:
       kind: phoebus
       resource: state.bob
 
   - id: local-phoebus-flow
-    name: Local IOC Chiller Flow
+    name: Cooling Overview
     technology: Cooling
     section: CSI-744 local
     platform: Phoebus
     rmc: --
-    note: Reads the supplied mock IOC flow, level, and supply-temperature PVs.
+    note: Primary and legacy chiller measurements, error flags, and the deliberate chiller-13 MINOR alarm.
     target:
       kind: phoebus
       resource: flow.bob

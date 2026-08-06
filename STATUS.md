@@ -681,3 +681,85 @@ the "Executable local-contract workstation" ticket ledger is unchanged:
 
 No commit was pushed, no pull request was opened, and no remote CI result was
 created in this session.
+
+## Realistic local Phoebus panel session
+
+Produced on 2026-08-06 on the same Debian workstation. This session turns the
+three minimal BOB connectivity fixtures into a locally executable operator-style
+mock. It does not claim ELI visual approval, site alarm connectivity, or
+test-zone acceptance.
+
+### IOC and panel coverage
+
+The exact `/usr/EPICS/db/laser.db` was streamed from the supplied
+`laser-mockup-ioc:ready` image. It contains 89 records. The three BOB resources
+now expose 84 distinct records; four internal fanout/helper records and the
+unused combined unit-22 delay command are deliberately omitted. Structured PVs
+use a display-local `CP=L4-NSOPCPA-NL1` macro.
+
+The supplied database was observed with two local-acceptance defects:
+
+1. Static input records seeded with `VAL` remained UDF until first processing.
+2. `SetFlashlamps` used `FLNK` instead of transferring its selected value to
+   `FlashlampsCMD`, and `FlashlampsCMD2` had no closed-loop source. A RUN request
+   changed `SetFlashlamps` but left the 14 state records at STANDBY.
+
+`tools/phoebus-local/prepare-mock-ioc.sh` now processes the static records and
+repairs `SetFlashlamps.OUT`, `FlashlampsCMD2.DOL`, and
+`FlashlampsCMD2.OMSL` in IOC memory. It logs every write and does not modify the
+ZIP or image. Its postconditions observed here were:
+
+```text
+AI_NL2_CHILLER_13_LEVEL        45 LOW MINOR
+SI_NL2_FL_22_CH1               STANDBY
+SI_NL2_FL_28_CH2               STANDBY
+Local mock IOC preparation passed.
+```
+
+### Live behavior observed
+
+The locked Phoebus 4.7.4-SNAPSHOT runtime parsed and displayed all three BOBs
+against the native `softIoc` binary extracted from the supplied image. The
+following writes were performed through the visible Phoebus widgets, not with
+direct `caput`, and the displayed/CA readbacks followed:
+
+```text
+all 14 legacy flashlamps       STANDBY -> RUN -> STANDBY
+PS5059:22 channel-1 state      STANDBY -> RUN -> STANDBY
+PS5059:22 channel-1 delay      50 -> 77 -> 50
+```
+
+Electron then loaded `config/phoebus-local.yaml`, started one locked Phoebus
+server on port 14918, and opened `temperature.bob`, `state.bob`, and `flow.bob`.
+The invocation audit contained one server/settings call and three resource
+calls; all three launcher rows rendered `SHARED`. Visual evidence is tracked as
+`reference-screenshots/08-local-realistic-overview.png` through
+`11-local-realistic-launcher.png`.
+
+### Command record
+
+```text
+$ npm run verify
+# tests 165
+# pass 165
+# fail 0
+# skipped 0
+build, four config validations, and Phoebus asset smoke passed
+[exit status: 0]
+```
+
+The Docker daemon was inactive and requires an interactive sudo password on
+this workstation, so the container-orchestrated `npm run acceptance:local` was
+not repeated. Its new Docker-mode mock-preparation hook passed shell/static
+validation, and its `docker exec` argument path was exercised through a
+container-compatible harness against the same native IOC. The launcher/Phoebus
+behavior was then executed against the image's native EPICS binaries. This
+limitation does not replace the earlier 2026-08-04 container acceptance record.
+
+### Bucket outcome
+
+CSI-844 and CSI-848 remain IMPLEMENTED with stronger local evidence. CSI-849
+still requires the approved ELI/test-zone layout and alarm configuration; a
+local mock does not supply that approval. The overall count remains **7
+IMPLEMENTED, 2 CONSTRUCTED-UNVERIFIABLE, 3 BLOCKED**. The internal GitLab
+project/branch for site panel ownership is not present in this checkout.

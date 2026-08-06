@@ -50,14 +50,15 @@ npm run smoke:hmi-lifecycle           # exercise the loopback lifecycle HTTP con
 npm run smoke:labview-contract        # execute exact-path POSIX launch fixtures
 npm run smoke:phoebus-local           # validate wrapper argv and local BOB assets
 npm run acceptance:local              # run the IOC + lifecycle + Electron + Phoebus acceptance
-npm run verify                       # tests + check + both bundled config validations
+npm run verify                       # tests + build + four config validations + Phoebus assets
 ```
 
 ## Executable local acceptance
 
 `npm run acceptance:local` exercises the joined local stack through the built
 Electron main process. It verifies the supplied IOC with the required `caget`
-and `camonitor`, starts the loopback lifecycle sidecar, applies the tracked
+and `camonitor`, prepares the static mock records and in-memory flashlamp
+fanout with a complete `caput` audit, starts the loopback lifecycle sidecar, applies the tracked
 alarm layout first, launches both LabVIEW contract fixtures and three Phoebus
 BOBs through IPC, captures lifecycle/runtime/argv evidence, and then restores
 the memento in a fresh Phoebus process. It stops only processes that it started
@@ -77,7 +78,10 @@ including literal CA output, JSON launch/lifecycle records, exact NUL-delimited
 argv captures, logs, window trees, and screenshots. The tracked sample images
 are `reference-screenshots/05-local-phoebus-live.png`,
 `06-local-alarm-layout-restored.png`, and
-`07-local-acceptance-launcher.png`.
+`07-local-acceptance-launcher.png`. The expanded operator-style mock is recorded
+in `08-local-realistic-overview.png`, `09-local-realistic-cooling.png`,
+`10-local-realistic-timing-control.png`, and
+`11-local-realistic-launcher.png`.
 
 This acceptance config contains explicit local contracts. The `.exe` files are
 POSIX fixtures, not NI LabVIEW binaries. The lifecycle sidecar is not the

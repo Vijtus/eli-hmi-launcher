@@ -18,7 +18,7 @@
     "acceptance:local": "tools/run-local-acceptance.sh",
     "check": "tsc -b && electron-vite build",
     "test": "tsx --test tests/*.test.ts",
-    "verify": "npm test && npm run check && npm run validate-config && npm run validate-config -- config/launcher.example-real.yaml"
+    "verify": "npm test && npm run check && npm run validate-config && npm run validate-config -- config/launcher.example-real.yaml && npm run validate-config -- config/phoebus-local.yaml && npm run validate-config -- config/local-acceptance.yaml && npm run smoke:phoebus-local"
   },
   "dependencies": {
     "@picocss/pico": "2.1.1",

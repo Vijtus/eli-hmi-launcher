@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — realistic local Phoebus panels (2026-08-06)
+
+- Replaced the three minimal one-value BOB fixtures with operator-style
+  laser/regenerator, cooling, and flashlamp/timing panels. The displays use a
+  configurable `CP` macro, navigate between one another, and expose 84 of the
+  supplied IOC's 89 records. Status widgets remain display-only; writable
+  widgets are restricted to the IOC's explicit command records.
+- Added primary/legacy chiller views with engineering units, level and flow
+  visualization, error indicators, and the database's deliberate
+  `AI_NL2_CHILLER_13_LEVEL` LOW/MINOR alarm. The timing panel includes unit-22
+  and unit-28 state/delay commands plus the seven-by-two legacy flashlamp
+  matrix. Every display is visibly marked as a local mock, not an operations
+  screen.
+- Added `prepare-mock-ioc.sh`. Live testing found that seeded input records
+  remain UDF and the supplied global flashlamp fanout drops the requested enum
+  value. The script processes seeded values, repairs three link fields in IOC
+  memory, initializes safe command values, logs every `caput`, and proves the
+  expected alarm and both ends of the fanout without modifying the IOC image.
+- Expanded the Phoebus asset smoke from three single-PV assertions to exact PV
+  inventories, unique widget names, CP macro and mock-label checks, navigation
+  target checks, and a fail-closed writable-PV allowlist. Both local configs and
+  the smoke now run in `npm run verify` and therefore in pull-request CI.
+- A native IOC plus the locked Phoebus runtime displayed all three panels.
+  On-screen controls changed all 14 legacy flashlamps STANDBY → RUN → STANDBY,
+  unit-22 channel-1 state STANDBY → RUN → STANDBY, and its delay 50 → 77 → 50;
+  each readback followed. Electron then launched the same three resources
+  through one port-14918 server and rendered all rows as `SHARED`. Screenshots
+  08-11 record that run. `npm run verify` passed 165/165 tests, the build, four
+  config validations, and the expanded asset smoke.
+
 ## Unreleased — post-delivery defect fixes (continuation, 2026-08-04)
 
 Three narrow fixes for the defects that `AGENT-PROMPT.md` listed as deliberately

@@ -323,6 +323,13 @@ printf '%s\n' "$camonitor_status" > "$evidence_dir/camonitor.exit-status"
 grep -F 'L4-NSOPCPA-NL1:SY3PL50M:32:State' "$evidence_dir/camonitor.txt" >/dev/null || \
   fail "camonitor produced no initial state value"
 
+# The supplied database seeds static records as UDF and its global flashlamp
+# fanout drops the selected enum value. Prepare only this local mock runtime,
+# retain the complete caput audit, and leave the image itself unchanged.
+"$repo_root/tools/phoebus-local/prepare-mock-ioc.sh" \
+  --docker-container "$ioc_name" \
+  | tee "$evidence_dir/mock-ioc-preparation.log"
+
 port_open "$lifecycle_port" && fail "lifecycle port $lifecycle_port is already in use"
 ELI_HMI_LIFECYCLE_BIND=127.0.0.1 \
 ELI_HMI_LIFECYCLE_PORT="$lifecycle_port" \
@@ -514,6 +521,7 @@ jq -n \
     observedAt: $observedAt,
     evidenceDir: $evidenceDir,
     ioc: {cagetExitStatus: ($cagetStatus | tonumber), camonitorExitStatus: ($camonitorStatus | tonumber)},
+    mockPreparation: "static records processed, deliberate LOW/MINOR alarm proven, and local flashlamp fanout repaired in memory",
     electron: "six production launch IPC calls passed and lifecycle deregistration was observed",
     labview: "POSIX contract fixtures ran; NI LabVIEW was not executed",
     phoebus: "locked runtime exposed each BOB native title through one server",

@@ -11,6 +11,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+[[ -x "$script_dir/prepare-mock-ioc.sh" ]]
+bash -n "$script_dir/prepare-mock-ioc.sh"
+
 mkdir -p -- "$fixture_root/jdk/bin" "$fixture_root/runtime/with space" "$fixture_root/audit"
 touch "$fixture_root/runtime/with space/product-test.jar"
 capture_file="$fixture_root/java.argv"
@@ -58,15 +61,134 @@ import sys
 import xml.etree.ElementTree as ET
 
 display_dir = Path(sys.argv[1])
+cp = "L4-NSOPCPA-NL1"
 expected = {
-    "temperature.bob": "L4-NSOPCPA-NL1:TK6:44:DisplayTemperature",
-    "state.bob": "L4-NSOPCPA-NL1:SY3PL50M:32:State",
-    "flow.bob": "L4-NSOPCPA-NL1:PS1225:10:MeasuredFlow",
+    "temperature.bob": {
+        "BI_NL2_CONN",
+        "BI_NL2_FULLP",
+        "BI_NL2_SHUTTER",
+        "BI_NL2_MSS_1",
+        "BI_NL2_SEQUENCER_RUNNING",
+        "BI_NL2_REGEN_STATE",
+        "AI_TEMP_NL2_REGEN",
+        "AI_NL2_ATT",
+        "AI_NL2_PHD_MEAN",
+        "AI_NL2_PHD2_MEAN",
+        f"{cp}:SY3PL50M:32:State",
+        f"{cp}:SY3PL50M:32:ErrorCode",
+        f"{cp}:TK6:44:DisplayTemperature",
+        f"{cp}:TK6:44:ErrorCode",
+        f"{cp}:SM5-ATT:51:CurrentPosition",
+        f"{cp}:SM5-ATT:51:ErrorCode",
+        f"{cp}:SM5-SH:50:ErrorCode",
+        f"{cp}:IO:15:ErrorCode",
+        f"{cp}:LDM150V5:17:ErrorCode",
+        f"{cp}:HV40W:40:ErrorCode",
+        f"{cp}:PD1-REG:48:ErrorCode",
+    },
+    "flow.bob": {
+        f"{cp}:PS1225:10:ErrorCode",
+        f"{cp}:PS1225:10:Tout",
+        f"{cp}:PS1225:10:Ttank",
+        f"{cp}:PS1225:10:Treturn",
+        f"{cp}:PS1225:10:Tsupply",
+        f"{cp}:PS1225:10:MeasuredFlow",
+        f"{cp}:PS1225:10:MeasuredLevel",
+        *{
+            f"BI_NL2_ERR_CHILLER_{chiller}"
+            for chiller in range(11, 15)
+        },
+        *{
+            f"AI_NL2_CHILLER_{chiller}_{measurement}"
+            for chiller in range(11, 15)
+            for measurement in ("TEMP", "FLOW", "LEVEL")
+        },
+    },
+    "state.bob": {
+        *{
+            f"{cp}:PS5059:{unit}:ErrorCode"
+            for unit in (22, 28)
+        },
+        *{
+            f"{cp}:PS5059:{unit}:Ch{channel}{field}{suffix}"
+            for unit in (22, 28)
+            for channel in (1, 2)
+            for field in ("State", "TriggeringDelay")
+            for suffix in ("", ":SET")
+        },
+        "SetFlashlamps",
+        "FLASHLAMPS_RUN",
+        "FLASHLAMPS_STANDBY",
+        "AI_NL2_TRIG_DELAY_CH1",
+        "AI_NL2_TRIG_DELAY_CH2",
+        "SET_DELAY",
+        "BI_NL2_ERR_REGEN",
+        "BI_NL2_ERR_FLASHLAMPS",
+        "BI_NL2_SEQUENCER_RUNNING",
+        *{
+            f"SI_NL2_FL_{unit}_CH{channel}"
+            for unit in range(22, 29)
+            for channel in (1, 2)
+        },
+    },
 }
-for filename, pv in expected.items():
+writable = {
+    *{
+        f"{cp}:PS5059:{unit}:Ch{channel}{field}:SET"
+        for unit in (22, 28)
+        for channel in (1, 2)
+        for field in ("State", "TriggeringDelay")
+    },
+    "SetFlashlamps",
+    "FLASHLAMPS_RUN",
+    "FLASHLAMPS_STANDBY",
+    "SET_DELAY",
+}
+
+def expand_cp(pv: str) -> str:
+    return pv.replace("$(CP)", cp)
+
+for filename, expected_pvs in expected.items():
     root = ET.parse(display_dir / filename).getroot()
     assert root.tag == "display", filename
-    assert pv in [node.text for node in root.findall(".//pv_name")], (filename, pv)
+    assert root.findtext("name"), filename
+    assert int(root.findtext("width", "0")) >= 1000, filename
+    assert int(root.findtext("height", "0")) >= 700, filename
+    assert root.findtext("macros/CP") == cp, filename
+
+    mock_labels = [node.text or "" for node in root.findall(".//widget/text")]
+    assert any("LOCAL MOCK IOC" in label for label in mock_labels), filename
+
+    names = [node.findtext("name") for node in root.findall(".//widget")]
+    assert all(names), filename
+    assert len(names) == len(set(names)), (filename, "duplicate widget name")
+
+    actual_pvs = {
+        expand_cp(node.text)
+        for node in root.findall(".//pv_name")
+        if node.text
+    }
+    assert actual_pvs == expected_pvs, (
+        filename,
+        "missing",
+        sorted(expected_pvs - actual_pvs),
+        "unexpected",
+        sorted(actual_pvs - expected_pvs),
+    )
+
+    for widget in root.findall(".//widget"):
+        if widget.attrib.get("type") not in {"combo", "textentry"}:
+            continue
+        pv = widget.findtext("pv_name")
+        assert pv and expand_cp(pv) in writable, (filename, widget.findtext("name"), pv)
+
+    for action in root.findall(".//action"):
+        if action.attrib.get("type") == "write_pv":
+            pv = action.findtext("pv_name")
+            assert pv and expand_cp(pv) in writable, (filename, "write action", pv)
+        if action.attrib.get("type") == "open_display":
+            target = action.findtext("file")
+            assert target and (display_dir / target).is_file(), (filename, "display action", target)
 PY
 
 grep -Fx 'org.phoebus.pv.ca/addr_list=127.0.0.1' "$repo_root/config/phoebus-local.properties" >/dev/null

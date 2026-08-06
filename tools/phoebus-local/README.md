@@ -44,16 +44,58 @@ Run the launcher with `config/phoebus-local.yaml`. Its three entries open the
 BOB files in `examples/phoebus-local/` against the supplied mock IOC through
 the settings in `config/phoebus-local.properties`.
 
-The 2026-08-04 acceptance run observed these real values in Phoebus:
+The panels deliberately use a `CP=L4-NSOPCPA-NL1` display macro so the verified
+local prefix is explicit and can later be replaced by test-zone configuration.
+They expose 84 distinct operator-facing PVs from the image's 89-record
+`laser.db`; four internal fanout/helper records and the unused combined unit-22
+delay command are not presented as normal controls.
+
+| resource | local purpose |
+|---|---|
+| `temperature.bob` | Laser/regenerator overview: connection, interlocks, state, measurements, and structured device errors. |
+| `flow.bob` | Primary plus four legacy chillers, engineering units, level/flow visualization, and the real mock `AI_NL2_CHILLER_13_LEVEL` LOW/MINOR alarm. |
+| `state.bob` | Unit-22/unit-28 state and delay controls, global mock controls, and the seven-by-two legacy flashlamp matrix. |
+
+Every panel carries `LOCAL MOCK IOC` labeling. Readbacks use display-only
+widgets. Writable widgets are limited by the asset self-test to explicit
+`:SET`, `SetFlashlamps`, `SET_DELAY`, `FLASHLAMPS_RUN`, and
+`FLASHLAMPS_STANDBY` command records.
+
+### Prepare the supplied mock
+
+The image seeds static input records with `VAL`, leaving them UDF until first
+processing. Its `SetFlashlamps`/`FlashlampsCMD2` links also fail to transfer the
+selected enum value through the full fanout. Prepare a running local container
+before opening the panels:
+
+```sh
+tools/phoebus-local/prepare-mock-ioc.sh --docker-container <container-name>
+ELI_LAUNCHER_CONFIG="$PWD/config/phoebus-local.yaml" npm start
+```
+
+The preparation step processes the seeded readbacks, repairs three link fields
+in IOC memory, initializes commands to STANDBY/50, logs every `caput`, proves
+the chiller-13 LOW/MINOR alarm, and verifies both ends of the global fanout. It
+does not alter the supplied ZIP or image. `npm run acceptance:local` invokes it
+automatically and retains the audit as `mock-ioc-preparation.log`.
+
+The 2026-08-06 interactive run observed these values in the real locked
+Phoebus runtime:
 
 ```text
 Measured flow        4.435 l/min
 Measured level       65 %
 Supply temperature   23.50 deg C
+Chiller 13 level     45 % LOW MINOR
 ```
 
-Those numbers are an execution observation, not fixture constants. Current IOC
-values may differ on later runs.
+The same run used the actual BOB controls to change all 14 legacy flashlamps
+from STANDBY to RUN and back, change unit-22 channel-1 delay from 50 to 77 and
+back, and change its structured state from STANDBY to RUN and back. The
+readbacks followed each write. Screenshots 08-10 in `reference-screenshots/`
+record the final restored state; screenshot 11 records the launcher with all
+three resources in `SHARED` state. These are local mock observations, not site
+or test-zone acceptance.
 
 ## Alarm layout
 
