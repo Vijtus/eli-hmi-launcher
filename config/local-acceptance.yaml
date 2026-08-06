@@ -1,0 +1,108 @@
+appName: CSI-744 local acceptance
+
+# This configuration joins the executable local contracts. It does not contain
+# site LabVIEW names, a site lifecycle contract, or a site alarm backend.
+local:
+  workspaceRoot: '${APP_ROOT}/examples/labview-contract-workspace'
+  cssGuiRoot: '${APP_ROOT}/examples/phoebus-local'
+  zoneSymbol: '${ELI_LABVIEW_CONTRACT_ZONE}'
+  phoebus:
+    executable: '${APP_ROOT}/tools/phoebus-local/phoebus.sh'
+    serverPort: 14918
+    settingsFile: '${APP_ROOT}/config/phoebus-local.properties'
+    layoutFile: '${APP_ROOT}/examples/phoebus-local/local-alarm-layout.memento'
+    startupTimeoutMs: 60000
+    resourceReadyDelayMs: 8000
+  hmiApi:
+    baseUrl: http://127.0.0.1:8765/api/lifecycle/v1
+    stationId: csi744-local-acceptance
+    requestTimeoutMs: 2000
+    heartbeatIntervalMs: 2000
+  monitoring:
+    reconcileIntervalMs: 250
+
+security:
+  allowedCommandRoots:
+    - '${APP_ROOT}/examples/labview-contract-workspace'
+    - '${APP_ROOT}/tools/phoebus-local'
+  allowBareCommands: false
+
+entries:
+  - id: labview-contract-developer
+    name: LabVIEW Developer contract fixture
+    technology: Local contract
+    section: CSI-843
+    platform: LabVIEW fixture
+    rmc: --
+    note: Executable POSIX fixture; NI LabVIEW is not present.
+    access:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: write
+      onAlreadyRunning: block
+      onUnknownState: block
+    target:
+      kind: labview-dev
+      hostName: '${ELI_LABVIEW_CONTRACT_HOST}'
+      iocName: '${ELI_LABVIEW_CONTRACT_IOC}'
+      iocType: Camera IOC
+      exeName: Developer Contract.exe
+
+  - id: labview-contract-epics
+    name: LabVIEW EPICS contract fixture
+    technology: Local contract
+    section: CSI-847
+    platform: LabVIEW fixture
+    rmc: --
+    note: Executable POSIX fixture; NI LabVIEW is not present.
+    access:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: write
+      onAlreadyRunning: block
+      onUnknownState: block
+    target:
+      kind: labview-epics
+      guiName: '${ELI_LABVIEW_CONTRACT_GUI}'
+      guiType: Operator Panels
+      exeName: EPICS Contract.exe
+
+  - id: local-phoebus-temperature
+    name: Local IOC Temperature
+    technology: Laser
+    section: CSI-744 local
+    platform: Phoebus
+    rmc: --
+    note: Reads the supplied mock IOC temperature PV.
+    target:
+      kind: phoebus
+      resource: temperature.bob
+
+  - id: local-phoebus-state
+    name: Local IOC State
+    technology: Laser
+    section: CSI-744 local
+    platform: Phoebus
+    rmc: --
+    note: Reads the supplied mock IOC state PV.
+    target:
+      kind: phoebus
+      resource: state.bob
+
+  - id: local-phoebus-flow
+    name: Local IOC Chiller Flow
+    technology: Cooling
+    section: CSI-744 local
+    platform: Phoebus
+    rmc: --
+    note: Reads the supplied mock IOC flow, level, and supply-temperature PVs.
+    target:
+      kind: phoebus
+      resource: flow.bob
+
+moreActions:
+  - id: local-phoebus-alarm-layout
+    label: Local alarm layout
+    target:
+      kind: phoebus
+      layout: true

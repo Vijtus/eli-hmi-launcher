@@ -83,7 +83,16 @@ type ColumnKey =
   | "enabled"
   | "testedOn"
   | "testResult"
-  | "comments";
+  | "comments"
+  | "iocName"
+  | "hostName"
+  | "iocType"
+  | "guiName"
+  | "guiType"
+  | "exeName"
+  | "phoebusResource"
+  | "phoebusApp"
+  | "phoebusLayout";
 
 const HEADER_PATTERNS: [RegExp, ColumnKey][] = [
   [/^entry id/, "entryId"],
@@ -103,6 +112,15 @@ const HEADER_PATTERNS: [RegExp, ColumnKey][] = [
   [/^tested on host/, "testedOn"],
   [/^test result/, "testResult"],
   [/^comments/, "comments"],
+  [/^ioc name/, "iocName"],
+  [/^host name/, "hostName"],
+  [/^ioc type/, "iocType"],
+  [/^gui name/, "guiName"],
+  [/^gui type/, "guiType"],
+  [/^exe name/, "exeName"],
+  [/^phoebus resource/, "phoebusResource"],
+  [/^phoebus app/, "phoebusApp"],
+  [/^phoebus (?:layout|use configured layout)/, "phoebusLayout"],
 ];
 
 function mapHeader(headerRow: string[]): Map<ColumnKey, number> | undefined {
@@ -216,7 +234,14 @@ function parseEnvCell(raw: string, row: number, errors: IntakeError[]): [string,
 // Conversion.
 // ---------------------------------------------------------------------------
 
-const KNOWN_KINDS = new Set(["process", "web", "folder"]);
+const KNOWN_KINDS = new Set([
+  "process",
+  "web",
+  "folder",
+  "labview-dev",
+  "labview-epics",
+  "phoebus",
+]);
 const ENABLED_TRUE = new Set(["yes", "true", "1", "y"]);
 const ENABLED_FALSE = new Set(["no", "false", "0", "n"]);
 
@@ -276,6 +301,15 @@ export function convertIntakeCsv(csvText: string): IntakeConversion {
       "env",
       "owner",
       "enabled",
+      "iocName",
+      "hostName",
+      "iocType",
+      "guiName",
+      "guiType",
+      "exeName",
+      "phoebusResource",
+      "phoebusApp",
+      "phoebusLayout",
     ];
     const hasData = dataKeys.some((key) => cell(raw, key) !== "");
     if (!hasData) {
@@ -302,15 +336,76 @@ export function convertIntakeCsv(csvText: string): IntakeConversion {
     if (!KNOWN_KINDS.has(kind)) {
       errors.push({
         row: rowNumber,
-        message: `Target kind must be process, web, or folder (got '${cell(raw, "kind") || "<empty>"}').`,
+        message:
+          "Target kind must be process, web, folder, labview-dev, labview-epics, or phoebus " +
+          `(got '${cell(raw, "kind") || "<empty>"}').`,
       });
       continue;
     }
 
     const targetValue = cell(raw, "targetValue");
-    if (!targetValue) {
+    if (["process", "web", "folder"].includes(kind) && !targetValue) {
       errors.push({ row: rowNumber, message: "Command, URL, or folder path is required." });
       continue;
+    }
+
+    if (kind === "labview-dev") {
+      const requiredFields: [ColumnKey, string][] = [
+        ["iocName", "IOC name"],
+        ["hostName", "host name"],
+        ["iocType", "IOC type"],
+        ["exeName", "EXE name"],
+      ];
+      const missingFields = requiredFields
+        .filter(([key]) => !cell(raw, key))
+        .map(([, label]) => label);
+      if (missingFields.length > 0) {
+        errors.push({
+          row: rowNumber,
+          message: `labview-dev requires ${missingFields.join(", ")}.`,
+        });
+        continue;
+      }
+    }
+
+    if (kind === "labview-epics") {
+      const requiredFields: [ColumnKey, string][] = [
+        ["guiName", "GUI name"],
+        ["guiType", "GUI type"],
+        ["exeName", "EXE name"],
+      ];
+      const missingFields = requiredFields
+        .filter(([key]) => !cell(raw, key))
+        .map(([, label]) => label);
+      if (missingFields.length > 0) {
+        errors.push({
+          row: rowNumber,
+          message: `labview-epics requires ${missingFields.join(", ")}.`,
+        });
+        continue;
+      }
+    }
+
+    if (kind === "phoebus") {
+      const resource = cell(raw, "phoebusResource");
+      const app = cell(raw, "phoebusApp");
+      const layout = cell(raw, "phoebusLayout").toLowerCase();
+      if (app && !resource) {
+        errors.push({ row: rowNumber, message: "Phoebus app name requires a Phoebus resource." });
+        continue;
+      }
+      if (
+        layout &&
+        !["yes", "true", "on", "1", "no", "false", "off", "0"].includes(layout)
+      ) {
+        errors.push({
+          row: rowNumber,
+          message:
+            "Phoebus layout column must be yes or no. Configure the memento path once in " +
+            "local.phoebus.layoutFile; do not put a path in the catalog.",
+        });
+        continue;
+      }
     }
 
     if (kind === "web") {
@@ -385,8 +480,30 @@ export function convertIntakeCsv(csvText: string): IntakeConversion {
       }
     } else if (kind === "web") {
       lines.push(`      url: ${yamlScalar(targetValue)}`);
-    } else {
+    } else if (kind === "folder") {
       lines.push(`      path: ${yamlScalar(targetValue)}`);
+    } else if (kind === "labview-dev") {
+      lines.push(`      iocName: ${yamlScalar(cell(raw, "iocName"))}`);
+      lines.push(`      hostName: ${yamlScalar(cell(raw, "hostName"))}`);
+      lines.push(`      iocType: ${yamlScalar(cell(raw, "iocType"))}`);
+      lines.push(`      exeName: ${yamlScalar(cell(raw, "exeName"))}`);
+    } else if (kind === "labview-epics") {
+      lines.push(`      guiName: ${yamlScalar(cell(raw, "guiName"))}`);
+      lines.push(`      guiType: ${yamlScalar(cell(raw, "guiType"))}`);
+      lines.push(`      exeName: ${yamlScalar(cell(raw, "exeName"))}`);
+    } else if (kind === "phoebus") {
+      const resource = cell(raw, "phoebusResource");
+      const app = cell(raw, "phoebusApp");
+      const layout = cell(raw, "phoebusLayout").toLowerCase();
+      if (resource) {
+        lines.push(`      resource: ${yamlScalar(resource)}`);
+      }
+      if (app) {
+        lines.push(`      app: ${yamlScalar(app)}`);
+      }
+      if (["yes", "true", "on", "1"].includes(layout)) {
+        lines.push("      layout: true");
+      }
     }
 
     blocks.push(lines.join("\n"));

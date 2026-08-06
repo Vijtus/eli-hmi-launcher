@@ -40,7 +40,9 @@ fi
 # --- install dependencies if needed ----------------------------------------
 if [ ! -d node_modules ] || [ ! -e node_modules/.bin/electron-vite ]; then
   info "Installing dependencies (first run downloads Electron, ~100-200 MB)..."
-  npm install
+  # npm ci installs exactly what package-lock.json pins and does not rewrite the
+  # lockfile, matching .github/workflows/ci.yml and work order section 7.
+  npm ci
 else
   info "Dependencies present (delete node_modules to force a clean reinstall)."
 fi

@@ -527,6 +527,23 @@ main.container-fluid {
 }
 
 /* Only launch failures use this region; successful launches remain silent. */
+.catalog-staleness {
+  flex: none;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border: 1px solid #ffffff;
+  border-radius: 0;
+  background: #000000;
+  color: #ffffff;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.catalog-staleness[hidden] {
+  display: none;
+}
+
 .status-banner {
   flex: none;
   display: flex;
@@ -576,6 +593,7 @@ main.container-fluid {
 
 /* The table panel is the window's sole scrolling region. */
 .table-panel {
+  --runtime-state-column-width: 8rem;
   flex: 1 1 auto;
   min-height: 0;
   margin: 0;
@@ -598,18 +616,28 @@ main.container-fluid {
 }
 
 .table-panel col.column-name {
-  width: 21%;
+  width: 19%;
 }
 
 .table-panel col.column-technology,
 .table-panel col.column-section,
 .table-panel col.column-platform,
 .table-panel col.column-rmc {
-  width: 9%;
+  width: 8%;
+}
+
+.table-panel col.column-runtime-state {
+  width: 10%;
 }
 
 .table-panel col.column-note {
-  width: 43%;
+  width: 39%;
+}
+
+.runtime-state-cell {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .table-panel thead th {

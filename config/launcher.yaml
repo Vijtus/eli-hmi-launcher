@@ -190,6 +190,196 @@ entries:
           - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
           - L4 Phoebus Vacuum Overview
 
+  - id: demo-beam-diagnostics
+    name: Demo Beam Diagnostics Console
+    technology: Diagnostics
+    section: L4a
+    platform: LabVIEW
+    rmc: RMC410
+    note: Beam position, profile, intensity, and loss-monitor overview
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Beam Diagnostics Console
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Beam Diagnostics Console
+
+  - id: demo-timing-distribution
+    name: Demo Timing Distribution Monitor
+    technology: Timing
+    section: L4b; L4c
+    platform: Phoebus
+    rmc: RMC411
+    note: Event timing, trigger fanout, clock health, and synchronization status
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Timing Distribution Monitor
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Timing Distribution Monitor
+
+  - id: demo-laser-interlocks
+    name: Demo Laser Interlock Overview
+    technology: Laser; Safety
+    section: L4c
+    platform: Web
+    rmc: RMC412
+    note: Interlock chain, shutter permits, fault history, and reset guidance
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Laser Interlock Overview
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Laser Interlock Overview
+
+  - id: demo-vacuum-trends
+    name: Demo Vacuum Trend Explorer
+    technology: Vacuum; Data
+    section: L4
+    platform: Phoebus
+    rmc: RMC413
+    note: Pressure trends, pump states, valve history, and recent vacuum events
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Vacuum Trend Explorer
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Vacuum Trend Explorer
+
+  - id: demo-east-camera-wall
+    name: Demo East Camera Wall
+    technology: Cameras
+    section: L4a; L4b
+    platform: LabVIEW
+    rmc: RMC418
+    note: Cam East-01, East-02, Tunnel Wide, Target Close, and overview mosaic
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo East Camera Wall
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo East Camera Wall
+
+  - id: demo-motion-control
+    name: Demo Motion Control Bench
+    technology: Motion; Controls
+    section: L4d
+    platform: LabVIEW
+    rmc: RMC420
+    note: Motor axes, limit switches, homing status, presets, and maintenance jog controls
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Motion Control Bench
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Motion Control Bench
+
+  - id: demo-cryogenics
+    name: Demo Cryogenics Overview
+    technology: Cryogenics
+    section: L4
+    platform: CSS
+    rmc: RMC421
+    note: Temperatures, pressures, liquid levels, compressor state, and cooldown progress
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Cryogenics Overview
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Cryogenics Overview
+
+  - id: demo-rf-station
+    name: Demo RF Station Dashboard
+    technology: RF
+    section: L4b
+    platform: Phoebus
+    rmc: RMC422
+    note: Forward and reflected power, cavity tuning, amplifier state, and trip history
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo RF Station Dashboard
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo RF Station Dashboard
+
+  - id: demo-machine-protection
+    name: Demo Machine Protection Panel
+    technology: Safety; Interlocks
+    section: L4
+    platform: LabVIEW
+    rmc: RMC423
+    note: Permit chain, inhibited channels, active trips, bypasses, and operator recovery hints
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Machine Protection Panel
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Machine Protection Panel
+
+  - id: demo-operator-logbook
+    name: Demo Operator Logbook
+    technology: Operations; Data
+    section: L4a; L4b; L4c
+    platform: Web
+    rmc: --
+    note: Shift notes, handover checklist, recent interventions, and bookmarked procedures
+    target:
+      kind: process
+      command: ${APP_ROOT}/examples/launchers/mock-launch.sh
+      args:
+        - Demo Operator Logbook
+      windows:
+        command: cmd.exe
+        args:
+          - /c
+          - '${APP_ROOT}\examples\launchers\mock-launch.cmd'
+          - Demo Operator Logbook
+
 quickActions:
   - id: data-browser
     label: Data Browser

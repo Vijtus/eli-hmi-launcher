@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<memento show_menu="true" show_statusbar="true" show_tabs="true" show_toolbar="true">
+    <DockStage_MAIN height="465.0" width="608.0" x="20.0" y="440.0">
+        <split pos="0.5">
+            <pane selected="0">
+                <DockItem_f45de782_c231_460a_b5a9_1b561ee72c03 application="alarm_area" input_uri="alarm://localhost/CSI744_LOCAL?app=alarm_area"/>
+            </pane>
+            <pane selected="-1"/>
+        </split>
+    </DockStage_MAIN>
+    <DockStage_bb1167a1_2981_4ec8_b77f_2f13371a0c27 height="885.0" width="638.0" x="630.0" y="20.0">
+        <pane selected="0">
+            <DockItem_bbb4cb3e_ad23_4cc9_902f_4a7f7d28557f COL0="25.0" COL1="240.0" COL1vis="true" COL2="400.0" COL2vis="true" COL3="130.0" COL3vis="true" COL4="130.0" COL4vis="true" COL5="200.0" COL5vis="true" COL6="100.0" COL6vis="true" COL7="130.0" COL7vis="true" COL8="130.0" COL8vis="true" DIR="0" POS="0.5006402048655569" SORT="1" application="alarm_table" input_uri="alarm://localhost/CSI744_LOCAL?app=alarm_table"/>
+        </pane>
+    </DockStage_bb1167a1_2981_4ec8_b77f_2f13371a0c27>
+    <DockStage_1e211951_cd9e_41e1_99a6_90794d03855d height="445.0" width="608.0" x="20.0" y="20.0">
+        <pane selected="0">
+            <DockItem_65947766_dfb0_4484_b368_db11456e9e1d application="alarm_tree" input_uri="alarm://localhost/CSI744_LOCAL"/>
+        </pane>
+    </DockStage_1e211951_cd9e_41e1_99a6_90794d03855d>
+</memento>

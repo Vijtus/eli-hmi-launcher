@@ -8,6 +8,43 @@ lives in `CONFIG_SCHEMA.md`; you should not need it for normal entries.
 The launcher shows **one table row per GUI**. The whole table comes from one
 YAML file. Adding a GUI = adding one block to that file.
 
+Machine-specific paths, host addresses, the zone symbol, Phoebus executable,
+settings/layout files, and lifecycle API location belong in the top-level `local:` block, not repeated in
+each entry. Catalog strings may reference them as `${local.workspaceRoot}`,
+`${local.cssGuiRoot}`, `${local.zoneSymbol}`, `${local.phoebus.executable}`,
+or `${local.hosts.<name>}`. The validator names any referenced key that is not
+configured; unused local keys may be omitted.
+
+The optional `local.monitoring.reconcileIntervalMs` controls how often the
+launcher updates the State column (default 5000 ms). `RUNNING` is reserved for
+a launcher-owned PID whose process start identity still matches. `SHARED`
+means a Phoebus server port is reachable, not that one panel is known open.
+Browser and folder rows show `HANDOFF` because those windows are owned by other
+applications.
+
+For local multi-launcher acceptance, start `services/hmi-lifecycle-api` and use:
+
+```yaml
+local:
+  hmiApi:
+    baseUrl: http://127.0.0.1:8765/api/lifecycle/v1
+    requestTimeoutMs: 2000
+    heartbeatIntervalMs: 5000
+```
+
+This service is a local launcher-lifecycle contract, not the site EPICS gateway
+or evidence of a maintainer-approved lifecycle API. If `baseUrl` is configured
+but unreachable, constrained launches fail closed. The sidecar atomically
+reserves singleton/write launches before spawn; a successful registration
+commits the reservation, while failed launches release it.
+
+LabVIEW rows also have a main-process launch restriction. Until maintainers
+resolve whether the rule is one instance, one write-mode instance, or both,
+LabVIEW entries default to one instance plus write exclusivity and fail closed
+when state is stale or unknown. With the local lifecycle service configured,
+the policy includes other live launcher sessions. Without it, enforcement is
+session-local.
+
 ---
 
 ## 1. The block you copy for every GUI
@@ -54,7 +91,7 @@ Field rules:
 
 ## 2. Pick the `target` — what happens when the row is clicked
 
-Exactly one of the three kinds:
+Exactly one of the six currently supported kinds:
 
 ### a) A program / script on the machine (`kind: process`)
 
@@ -85,7 +122,72 @@ Exactly one of the three kinds:
   survive. A `.cmd`/`.bat` script cannot be started directly; that case is for
   the maintainers (documented in CONFIG_SCHEMA.md).
 
-### b) A web page (`kind: web`)
+### b) A LabVIEW Developer HMI (`kind: labview-dev`)
+
+```yaml
+    target:
+      kind: labview-dev
+      iocName: '<ioc-name>'
+      hostName: '<host-name>'
+      iocType: '<ioc-type>'
+      exeName: '<exe-name>'
+```
+
+The root config must contain the workstation's `local.workspaceRoot` and
+`local.zoneSymbol`. The launcher builds the standard
+`Common/ELI/IOCs/<iocType>/Builds/GUI Application/<exeName>` path and passes
+`hostName`, `iocName`, and `zoneSymbol` as three separate arguments. Do not put
+quotes around fields merely because the resulting path contains spaces.
+
+### c) A LabVIEW EPICS HMI (`kind: labview-epics`)
+
+```yaml
+    target:
+      kind: labview-epics
+      guiName: '<gui-name>'
+      guiType: '<gui-type>'
+      exeName: '<exe-name>'
+```
+
+This uses the standard
+`Common/ELI/EPICS_GUIs/<guiType>/Builds/GUI Application/<exeName>` path. The
+launcher passes `zoneSymbol` first and `guiName` second. This is not the same
+argument list as `labview-dev`.
+
+### d) A Phoebus server or panel (`kind: phoebus`)
+
+```yaml
+    target:
+      kind: phoebus
+      resource: panels/main.bob
+      app: '<name-returned-by-phoebus-list>'
+```
+
+`resource` may be omitted for a server-only action. The workstation's
+`local.phoebus.executable` and `local.phoebus.serverPort` must be configured.
+The launcher first reuses or starts the server on that port, then invokes the
+same executable with `-resource` when a resource is present. Relative resources
+resolve below `local.cssGuiRoot`; absolute paths and HTTP(S) resources are also
+accepted. `app` is optional and must use a name read from the site's
+`phoebus -list` output. `local.phoebus.settingsFile`, when set, is imported only
+on the server-creating invocation. Do not add quote characters around paths or
+resources in YAML to imitate a shell command.
+
+For the alarm layout, use a separate server-start action only after the site has
+provided a saved memento:
+
+```yaml
+    target:
+      kind: phoebus
+      layout: true
+```
+
+This requires `local.phoebus.layoutFile`. It is a startup-only flag; the
+launcher rejects the request when that port already has a server because it
+cannot prove the existing instance loaded the requested layout. Opening three
+resources sequentially does not preserve panel placement, size, or focus.
+
+### e) A web page (`kind: web`)
 
 ```yaml
     target:
@@ -96,7 +198,7 @@ Exactly one of the three kinds:
 Opens in the default browser. Only `http://` / `https://` URLs are accepted —
 anything else is rejected when the launcher starts.
 
-### c) A folder (`kind: folder`)
+### f) A folder (`kind: folder`)
 
 ```yaml
     target:
@@ -107,9 +209,36 @@ anything else is rejected when the launcher starts.
 Opens in the file manager.
 
 If the command/URL/folder is wrong or missing, nothing silently happens: the
-launcher shows a red error banner with the reason (e.g. *"Configured command
+launcher shows a monochrome error banner with the reason (e.g. *"Configured command
 does not exist: …"*, *"Folder does not exist or is not reachable: …"*) and the
 attempt is written to the launch log.
+
+## Access restrictions (maintainer-owned)
+
+Ordinary catalog contributors should leave `access` unchanged unless the
+LabVIEW owner has supplied an approved policy and a concrete read/write launch
+mode. Maintainers can set a platform policy once:
+
+```yaml
+access:
+  platforms:
+    LabVIEW:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: unknown
+      onAlreadyRunning: block
+      onUnknownState: block
+```
+
+An individual entry may override those fields. `maxInstances: null` deliberately
+removes an inherited instance limit, which is how a policy allowing several
+read-only copies but only one writer is represented. Do not change
+`launchMode: unknown` to `read` or `write` until the control-system maintainers
+define what actually selects write mode. `onUnknownState: allow` weakens the
+fail-closed default and belongs only in a reviewed, read-only deployment config.
+`onAlreadyRunning: prompt` asks in the main process and logs the operator's
+decision. `focus` is not a silent no-op: without a native window identity it
+returns an explicit error.
 
 ---
 
@@ -157,15 +286,24 @@ Send the result to the launcher maintainers (or open a merge request against
 the deployed `launcher.yaml`). After the file is updated, restart the launcher
 and your rows appear — there is no separate import step.
 
+For a shared catalog, place only an `entries:` list in the external YAML and
+reference it from the root config under `catalog.sources`. Source order matters:
+a later source replaces an earlier row with the same `id`, and the launcher logs
+the override. A cached or missing source is shown as `CATALOG STALE` in the UI.
+
 ---
 
 ## 6. Bulk collection: the intake sheet (for maintainers)
 
 To gather a few dozen GUIs at once, hand owners `intake/L4_GUI_INTAKE.csv`
 (open it in Excel / LibreOffice / Google Sheets). One row per GUI; the columns
-mirror the fields above plus `Target kind`, `Command, URL, or folder path`,
-optional `Arguments`/`Working directory`/`Environment requirements`, and an
-`Enabled (yes/no)` decision column.
+mirror the fields above plus `Target kind`, generic process/web/folder fields,
+typed LabVIEW/Phoebus fields, and an `Enabled (yes/no)` decision column. A
+`labview-dev` row uses `IOC name`, `Host name`, `IOC type`, and `EXE name`; its
+generic command cell is intentionally empty. A `labview-epics` row uses
+`GUI name`, `GUI type`, and `EXE name` and also leaves the command cell empty.
+A `phoebus` row uses `Phoebus resource URI/path`; leave that field empty only
+for a deliberate server-only action.
 
 Convert the completed sheet to YAML deterministically:
 

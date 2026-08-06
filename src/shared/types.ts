@@ -26,7 +26,35 @@ export type FolderLaunchTarget = {
   path: string;
 };
 
-export type LaunchTarget = ProcessLaunchTarget | WebLaunchTarget | FolderLaunchTarget;
+export type LabviewDeveloperLaunchTarget = {
+  kind: "labview-dev";
+  iocName: string;
+  hostName: string;
+  iocType: string;
+  exeName: string;
+};
+
+export type LabviewEpicsLaunchTarget = {
+  kind: "labview-epics";
+  guiName: string;
+  guiType: string;
+  exeName: string;
+};
+
+export type PhoebusLaunchTarget = {
+  kind: "phoebus";
+  resource?: string;
+  app?: string;
+  layout?: boolean;
+};
+
+export type LaunchTarget =
+  | ProcessLaunchTarget
+  | WebLaunchTarget
+  | FolderLaunchTarget
+  | LabviewDeveloperLaunchTarget
+  | LabviewEpicsLaunchTarget
+  | PhoebusLaunchTarget;
 
 export type LauncherRow = {
   id: string;
@@ -43,6 +71,25 @@ export type LauncherAction = {
   label: string;
 };
 
+export type CatalogSourceState = "inline" | "fresh" | "cached" | "unavailable";
+
+export type CatalogSourceStatus = {
+  id: string;
+  path?: string;
+  state: CatalogSourceState;
+  stale: boolean;
+  entryCount: number;
+  message?: string;
+  cachePath?: string;
+  loadedAt?: string;
+};
+
+export type CatalogStatus = {
+  stale: boolean;
+  sources: CatalogSourceStatus[];
+  warnings: string[];
+};
+
 // Security policy that governs what process targets are allowed to run.
 // Resolved from the optional top-level `security:` block in the YAML config.
 export type SecurityPolicy = {
@@ -57,11 +104,47 @@ export type SecurityPolicy = {
   allowInsecureConfigPermissions: boolean;
 };
 
+export type LocalPhoebusConfig = {
+  executable?: string;
+  serverPort?: number;
+  settingsFile?: string;
+  layoutFile?: string;
+  startupTimeoutMs?: number;
+  resourceReadyDelayMs?: number;
+};
+
+export type LocalHmiApiConfig = {
+  baseUrl?: string;
+  stationId?: string;
+  authTokenEnv?: string;
+  requestTimeoutMs?: number;
+  heartbeatIntervalMs?: number;
+};
+
+export type LocalMonitoringConfig = {
+  reconcileIntervalMs?: number;
+};
+
+// Machine-specific values are intentionally optional. A setting becomes
+// mandatory only when an enabled launcher item references it or a typed target
+// requires it. This keeps web-only and portable configs usable without local
+// LabVIEW/Phoebus installation details.
+export type LocalMachineConfig = {
+  workspaceRoot?: string;
+  cssGuiRoot?: string;
+  zoneSymbol?: string;
+  phoebus: LocalPhoebusConfig;
+  hosts: Record<string, string>;
+  hmiApi: LocalHmiApiConfig;
+  monitoring: LocalMonitoringConfig;
+};
+
 export type LauncherConfig = {
   appName: string;
   rows: LauncherRow[];
   quickActions: LauncherAction[];
   moreActions: LauncherAction[];
+  catalogStatus: CatalogStatus;
 };
 
 // Discriminated result returned by the launch IPC channel so the renderer can
@@ -84,3 +167,63 @@ export type LaunchFailure = {
 };
 
 export type LaunchResult = LaunchOk | LaunchFailure;
+
+export type RuntimeObservationModel = "pid" | "phoebus-port" | "external-handoff";
+
+export type RuntimeStatus = "running" | "stopped" | "shared" | "handed-off" | "unknown";
+
+export type RuntimeItemState = {
+  id: string;
+  kind: LaunchTarget["kind"];
+  model: RuntimeObservationModel;
+  status: RuntimeStatus;
+  runningInstances: number;
+  totalInstances: number;
+  launchedAt: string;
+  lastSeenAt?: string;
+  stale: boolean;
+  detail: string;
+};
+
+export type RuntimeSnapshot = {
+  generatedAt: string;
+  reconcileIntervalMs: number;
+  items: RuntimeItemState[];
+  hmiApi?: HmiApiHealth;
+};
+
+export type HmiApiHealthStatus =
+  | "disabled"
+  | "connected"
+  | "unavailable"
+  | "misconfigured";
+
+export type HmiApiHealth = {
+  status: HmiApiHealthStatus;
+  reason?: string;
+  lastSuccessAt?: string;
+};
+
+export type LaunchAccessMode = "read" | "write" | "unknown";
+
+export type AlreadyRunningAction = "block" | "focus" | "prompt";
+
+export type UnknownStateAction = "block" | "allow";
+
+// `maxInstances: null` is meaningful in an override: it clears a stricter
+// platform/default limit so a write-mode-only policy can be expressed.
+export type LaunchAccessPolicyOverride = {
+  maxInstances?: number | null;
+  writeModeExclusive?: boolean;
+  launchMode?: LaunchAccessMode;
+  onAlreadyRunning?: AlreadyRunningAction;
+  onUnknownState?: UnknownStateAction;
+};
+
+export type LaunchAccessPolicy = {
+  maxInstances?: number;
+  writeModeExclusive: boolean;
+  launchMode: LaunchAccessMode;
+  onAlreadyRunning: AlreadyRunningAction;
+  onUnknownState: UnknownStateAction;
+};

@@ -1,9 +1,7 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import {
-  assertCommandAllowed,
-  assertWebUrlAllowed,
   loadConfigFromFile,
   materializeProcessTarget,
   resolveConfiguredPath,
@@ -11,39 +9,101 @@ import {
   type ParsedConfig,
 } from "./config";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
+import { attachLaunchDiagnostics, diagnosticsFromError } from "./launch-diagnostics";
 import {
-  assertCommandPathUsable,
   assertFolderPathUsable,
   assertResolvedValueNotEmpty,
-  assertWorkingDirectoryUsable,
 } from "./launch-validation";
+import { folderLaunchError } from "./launch-errors";
 import {
-  folderLaunchError,
-  launchErrorCode,
-  processLaunchError,
-  webLaunchError,
-} from "./launch-errors";
-import { spawnDetached } from "./process-launcher";
+  materializeLabviewDeveloperTarget,
+  materializeLabviewEpicsTarget,
+} from "./labview-targets";
+import { launchMaterializedProcess, type NativeLaunchResult } from "./native-launcher";
+import { PhoebusServerManager } from "./phoebus-server";
+import { assertPhoebusLayoutApplied, materializePhoebusTarget } from "./phoebus-targets";
+import {
+  createHmiApiAdapter,
+  NoopHmiApiAdapter,
+  type HmiApiAdapter,
+} from "./hmi-api";
+import { HmiLifecycleCoordinator } from "./hmi-lifecycle-coordinator";
+import { isConstrainedLaunchPolicy } from "./access-policy";
+import {
+  EntryLaunchGate,
+  describeUnperformedLaunch,
+  runWithLaunchPolicy,
+} from "./launch-policy-enforcement";
+import {
+  DEFAULT_RUNTIME_RECONCILE_INTERVAL_MS,
+  RuntimeRegistry,
+} from "./runtime-registry";
+import { launchWebTarget } from "./web-launcher";
 import type {
   LaunchResult,
   LaunchTarget,
   LauncherConfig,
+  LaunchAccessMode,
   ProcessLaunchTarget,
+  RuntimeSnapshot,
 } from "../shared/types";
 
 const DEFAULT_APP_NAME = "L4 Launcher";
 
 let loaded: ParsedConfig | undefined;
+let runtimeRegistry: RuntimeRegistry | undefined;
+const phoebusServers = new PhoebusServerManager();
+let hmiApi: HmiApiAdapter = new NoopHmiApiAdapter();
+let lifecycleCoordinator: HmiLifecycleCoordinator | undefined;
+const entryLaunchGate = new EntryLaunchGate();
+let lifecycleShutdownStarted = false;
+let lastLifecycleHealthStatus: string | undefined;
+
+function emptyRuntimeSnapshot(): RuntimeSnapshot {
+  return {
+    generatedAt: new Date().toISOString(),
+    reconcileIntervalMs: DEFAULT_RUNTIME_RECONCILE_INTERVAL_MS,
+    items: [],
+    hmiApi: lifecycleCoordinator?.health() ?? hmiApi.health(),
+  };
+}
+
+function runtimeSnapshot(): RuntimeSnapshot {
+  const snapshot = runtimeRegistry?.snapshot() ?? emptyRuntimeSnapshot();
+  return {
+    ...snapshot,
+    hmiApi: lifecycleCoordinator?.health() ?? hmiApi.health(),
+  };
+}
+
+function broadcastRuntimeSnapshot(snapshot: RuntimeSnapshot): void {
+  const publicSnapshot: RuntimeSnapshot = {
+    ...snapshot,
+    hmiApi: lifecycleCoordinator?.health() ?? hmiApi.health(),
+  };
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("launcher:runtime-states", publicSnapshot);
+    }
+  }
+}
 
 function publicConfig(): LauncherConfig {
   if (!loaded) {
-    return { appName: DEFAULT_APP_NAME, rows: [], quickActions: [], moreActions: [] };
+    return {
+      appName: DEFAULT_APP_NAME,
+      rows: [],
+      quickActions: [],
+      moreActions: [],
+      catalogStatus: { stale: false, sources: [], warnings: [] },
+    };
   }
   return {
     appName: loaded.appName,
     rows: loaded.rows,
     quickActions: loaded.quickActions,
     moreActions: loaded.moreActions,
+    catalogStatus: loaded.catalogStatus,
   };
 }
 
@@ -182,56 +242,12 @@ function showConfigErrorWindow(message: string, configPath: string | undefined):
 // Launching.
 // ---------------------------------------------------------------------------
 
-async function launchWebTarget(url: string, context: LaunchContext): Promise<void> {
-  let resolvedUrl = url;
-  try {
-    const parsed = assertWebUrlAllowed(url, context);
-    resolvedUrl = parsed.toString();
-    await shell.openExternal(resolvedUrl);
-  } catch (error) {
-    throw webLaunchError(resolvedUrl, error);
-  }
-}
-
-async function launchProcessTarget(target: ProcessLaunchTarget, context: LaunchContext): Promise<string> {
+async function launchProcessTarget(
+  target: ProcessLaunchTarget,
+  context: LaunchContext,
+): Promise<NativeLaunchResult> {
   const materialized = materializeProcessTarget(target, context);
-  assertResolvedValueNotEmpty(materialized.command, "process command");
-  if (materialized.cwd !== undefined) {
-    assertResolvedValueNotEmpty(materialized.cwd, "working directory");
-  }
-
-  // Authoritative security gate: enforce the command allow-list against the
-  // exact command that will be spawned on this platform.
-  assertCommandAllowed(materialized.command, context.security);
-
-  // Pre-flight checks so a bad config path produces a readable error instead of
-  // a raw ENOENT. A command with a path separator has already been resolved to
-  // an absolute path; a bare name is resolved via the OS PATH by spawn itself.
-  const hasSeparator = materialized.command.includes("/") || materialized.command.includes("\\");
-  if (hasSeparator) {
-    await assertCommandPathUsable(materialized.command);
-  }
-  if (materialized.cwd) {
-    await assertWorkingDirectoryUsable(materialized.cwd);
-  }
-
-  try {
-    await spawnDetached(materialized.command, materialized.args ?? [], materialized.cwd, materialized.env);
-  } catch (error) {
-    const code = launchErrorCode(error);
-    if (code === "ENOENT" || code === "EACCES" || code === "EPERM") {
-      // Re-check both paths so a directory or command changed after pre-flight
-      // is reported accurately instead of every ENOENT being blamed on PATH.
-      if (materialized.cwd) {
-        await assertWorkingDirectoryUsable(materialized.cwd);
-      }
-      if (hasSeparator) {
-        await assertCommandPathUsable(materialized.command);
-      }
-    }
-    throw processLaunchError(materialized.command, error);
-  }
-  return materialized.command;
+  return await launchMaterializedProcess(materialized, context);
 }
 
 async function launchFolderTarget(folderPath: string, context: LaunchContext): Promise<void> {
@@ -251,17 +267,95 @@ async function launchFolderTarget(folderPath: string, context: LaunchContext): P
   }
 }
 
-// Returns the resolved command (process targets only) for diagnostics logging.
-async function launchTarget(target: LaunchTarget, context: LaunchContext): Promise<string | undefined> {
+type LaunchDiagnostics = {
+  resolvedCommand?: string;
+  resolvedArgs?: string[];
+};
+
+async function launchTarget(
+  itemId: string,
+  target: LaunchTarget,
+  context: LaunchContext,
+  launchMode: LaunchAccessMode,
+): Promise<LaunchDiagnostics> {
   if (target.kind === "web") {
-    await launchWebTarget(target.url, context);
-    return undefined;
+    await launchWebTarget(target.url, context, (url) => shell.openExternal(url));
+    runtimeRegistry?.recordHandoff(itemId, "web");
+    return {};
   }
   if (target.kind === "process") {
-    return await launchProcessTarget(target, context);
+    const result = await launchProcessTarget(target, context);
+    await runtimeRegistry?.registerProcess({
+      entryId: itemId,
+      kind: "process",
+      command: result.command,
+      args: result.args,
+      receipt: result.receipt,
+      launchMode,
+    });
+    return { resolvedCommand: result.command, resolvedArgs: result.args };
+  }
+  if (target.kind === "labview-dev") {
+    const materialized = materializeLabviewDeveloperTarget(target, context);
+    const result = await launchMaterializedProcess(materialized, context);
+    await runtimeRegistry?.registerProcess({
+      entryId: itemId,
+      kind: "labview-dev",
+      command: result.command,
+      args: result.args,
+      receipt: result.receipt,
+      launchMode,
+    });
+    return { resolvedCommand: result.command, resolvedArgs: result.args };
+  }
+  if (target.kind === "labview-epics") {
+    const materialized = materializeLabviewEpicsTarget(target, context);
+    const result = await launchMaterializedProcess(materialized, context);
+    await runtimeRegistry?.registerProcess({
+      entryId: itemId,
+      kind: "labview-epics",
+      command: result.command,
+      args: result.args,
+      receipt: result.receipt,
+      launchMode,
+    });
+    return { resolvedCommand: result.command, resolvedArgs: result.args };
+  }
+  if (target.kind === "phoebus") {
+    const plans = materializePhoebusTarget(target, context);
+    let ensured;
+    try {
+      ensured = await phoebusServers.ensureServer(plans.server, async (serverPlan) => {
+        const started = await launchMaterializedProcess(serverPlan, context);
+        return started.receipt;
+      });
+      assertPhoebusLayoutApplied(plans.layoutRequested, ensured.state, plans.server.port);
+    } catch (error) {
+      throw attachLaunchDiagnostics(error, plans.server);
+    }
+    if (plans.openResource) {
+      const opened = await launchMaterializedProcess(plans.openResource, context);
+      runtimeRegistry?.recordPhoebus({
+        entryId: itemId,
+        port: plans.server.port,
+        ownership: ensured.state,
+        resource: plans.openResource.args?.at(-1),
+      });
+      return { resolvedCommand: opened.command, resolvedArgs: opened.args };
+    }
+    runtimeRegistry?.recordPhoebus({
+      entryId: itemId,
+      port: plans.server.port,
+      ownership: ensured.state,
+    });
+    return {
+      resolvedCommand: plans.server.command,
+      resolvedArgs: plans.server.args ?? [],
+    };
   }
   await launchFolderTarget(target.path, context);
-  return undefined;
+  runtimeRegistry?.recordHandoff(itemId, "folder");
+  return {};
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +364,10 @@ async function launchTarget(target: LaunchTarget, context: LaunchContext): Promi
 
 function registerIpcHandlers(): void {
   ipcMain.handle("launcher:get-config", async (): Promise<LauncherConfig> => publicConfig());
+  ipcMain.handle(
+    "launcher:get-runtime-states",
+    async (): Promise<RuntimeSnapshot> => runtimeSnapshot(),
+  );
 
   ipcMain.handle("launcher:launch-item", async (_event, itemId: unknown): Promise<LaunchResult> => {
     const startedAt = Date.now();
@@ -280,23 +378,114 @@ function registerIpcHandlers(): void {
       return { ok: false, id: String(itemId), label: "(invalid id)", kind: "unknown", error: "Invalid launcher item id.", launchedAt: nowIso };
     }
 
-    const target = loaded?.targetsById.get(itemId);
-    const label = loaded?.labelsById.get(itemId) ?? itemId;
+    const currentConfig = loaded;
+    const target = currentConfig?.targetsById.get(itemId);
+    const label = currentConfig?.labelsById.get(itemId) ?? itemId;
+    const accessPolicy = currentConfig?.accessPoliciesById.get(itemId);
 
-    if (!loaded || !target) {
+    if (!currentConfig || !target || !accessPolicy) {
       logEvent("warn", "Launch requested for unknown id", { id: itemId });
       return { ok: false, id: itemId, label, kind: "unknown", error: `Unknown launcher item id: ${itemId}`, launchedAt: nowIso };
     }
 
     try {
-      const resolvedCommand = await launchTarget(target, loaded.context);
+      const policyResult = await entryLaunchGate.run(itemId, async () =>
+        {
+          await lifecycleCoordinator?.refresh(itemId);
+          return await runWithLaunchPolicy(
+            {
+              entryId: itemId,
+              policy: accessPolicy,
+              runtime: runtimeRegistry?.getState(itemId),
+              instances: [
+                ...(runtimeRegistry?.getProcessRecords(itemId).map((record) => ({
+                  state: record.state,
+                  launchMode: record.launchMode,
+                })) ?? []),
+                ...(lifecycleCoordinator?.policyInstances(itemId) ?? []),
+              ],
+            },
+            async () => {
+              if (isConstrainedLaunchPolicy(accessPolicy)) {
+                await lifecycleCoordinator?.acquireReservation({
+                  entryId: itemId,
+                  launchMode: accessPolicy.launchMode,
+                  ...(accessPolicy.maxInstances !== undefined
+                    ? { maxInstances: accessPolicy.maxInstances }
+                    : {}),
+                  writeModeExclusive: accessPolicy.writeModeExclusive,
+                });
+              }
+              try {
+                const result = await launchTarget(
+                  itemId,
+                  target,
+                  currentConfig.context,
+                  accessPolicy.launchMode,
+                );
+                await lifecycleCoordinator?.flush();
+                return result;
+              } catch (error) {
+                await lifecycleCoordinator?.releasePendingReservation(itemId);
+                throw error;
+              }
+            },
+            {
+              confirmOverride: async (reason) => {
+                const result = await dialog.showMessageBox({
+                  type: "warning",
+                  buttons: ["Cancel", "Launch another instance"],
+                  defaultId: 0,
+                  cancelId: 0,
+                  noLink: true,
+                  title: "Launch restriction",
+                  message: `Launch another instance of ${label}?`,
+                  detail: reason,
+                });
+                const allowed = result.response === 1;
+                logEvent("warn", "Launch policy prompt resolved", {
+                  id: itemId,
+                  allowed,
+                  reason,
+                });
+                return allowed;
+              },
+            },
+          );
+        },
+      );
+      const unperformed = describeUnperformedLaunch(itemId, policyResult);
+      if (unperformed) {
+        logEvent("warn", "Launch was not performed by the access policy", {
+          id: itemId,
+          focused: policyResult.focused,
+        });
+        return {
+          ok: false,
+          id: itemId,
+          label,
+          kind: target.kind,
+          error: unperformed,
+          launchedAt: nowIso,
+        };
+      }
+      const diagnostics = policyResult.value ?? {};
       const durationMs = Date.now() - startedAt;
-      logLaunch({ id: itemId, label, target, resolvedCommand, ok: true, durationMs });
+      logLaunch({ id: itemId, label, target, ...diagnostics, ok: true, durationMs });
       return { ok: true, id: itemId, label, kind: target.kind, launchedAt: nowIso };
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logLaunch({ id: itemId, label, target, ok: false, error: errorMessage, durationMs });
+      const diagnostics = diagnosticsFromError(error);
+      logLaunch({
+        id: itemId,
+        label,
+        target,
+        ...diagnostics,
+        ok: false,
+        error: errorMessage,
+        durationMs,
+      });
       return { ok: false, id: itemId, label, kind: target.kind, error: errorMessage, launchedAt: nowIso };
     }
   });
@@ -312,7 +501,12 @@ async function bootstrap(): Promise<void> {
   let configPath: string | undefined;
   try {
     configPath = await resolveConfigPath();
-    loaded = loadConfigFromFile(configPath, { appRoot: app.getAppPath(), configDir: path.dirname(configPath) });
+    loaded = loadConfigFromFile(configPath, {
+      appRoot: app.getAppPath(),
+      configDir: path.dirname(configPath),
+      catalogCacheDir: path.join(app.getPath("userData"), "catalog-cache"),
+    });
+    hmiApi = createHmiApiAdapter(loaded.context.local.hmiApi);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logEvent("error", "Config load failed", { configPath: configPath ?? null, error: message });
@@ -329,11 +523,52 @@ async function bootstrap(): Promise<void> {
     quickActions: loaded.quickActions.length,
     moreActions: loaded.moreActions.length,
     logFile: getLogFilePath(),
+    catalogStale: loaded.catalogStatus.stale,
   });
+
+  for (const warning of loaded.catalogStatus.warnings) {
+    logEvent("warn", "Catalog source warning", { warning });
+  }
 
   if (loaded.context.security.allowedCommandRoots.length === 0) {
     logEvent("warn", "No security.allowedCommandRoots configured: process targets may run any absolute command. Consider adding an allow-list for production deployments.");
   }
+
+  runtimeRegistry = new RuntimeRegistry({
+    reconcileIntervalMs: loaded.context.local.monitoring.reconcileIntervalMs,
+    onChange: (snapshot) => {
+      broadcastRuntimeSnapshot(snapshot);
+      lifecycleCoordinator?.observeSnapshot(snapshot);
+    },
+    onError: (error) => {
+      logEvent("error", "Runtime reconciliation failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+  lifecycleCoordinator = new HmiLifecycleCoordinator(hmiApi, {
+    getSnapshot: () => runtimeRegistry?.snapshot() ?? emptyRuntimeSnapshot(),
+    getProcessRecords: () => runtimeRegistry?.getProcessRecords() ?? [],
+    onHealthChange: (health) => {
+      broadcastRuntimeSnapshot(runtimeSnapshot());
+      if (health.status !== lastLifecycleHealthStatus) {
+        logEvent(health.status === "connected" ? "info" : "warn", "HMI lifecycle API state changed", {
+          status: health.status,
+          reason: health.reason ?? null,
+          lastSuccessAt: health.lastSuccessAt ?? null,
+          contract: "local-launcher-lifecycle",
+        });
+        lastLifecycleHealthStatus = health.status;
+      }
+    },
+    onError: (error) => {
+      logEvent("error", "HMI lifecycle coordination failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+  runtimeRegistry.start();
+  await lifecycleCoordinator.start();
 
   registerIpcHandlers();
   createMainWindow();
@@ -360,4 +595,26 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+async function shutdownLifecycle(): Promise<void> {
+  if (lifecycleCoordinator) {
+    await lifecycleCoordinator.stop();
+  }
+}
+
+app.on("before-quit", (event) => {
+  runtimeRegistry?.stop();
+  if (!lifecycleCoordinator || lifecycleShutdownStarted) {
+    return;
+  }
+  event.preventDefault();
+  lifecycleShutdownStarted = true;
+  void shutdownLifecycle()
+    .catch((error: unknown) => {
+      logEvent("warn", "Lifecycle shutdown deadline failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    })
+    .finally(() => app.quit());
 });

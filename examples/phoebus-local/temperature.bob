@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>CSI-744 Local Temperature</name>
+  <width>680</width>
+  <height>240</height>
+  <background_color><color red="245" green="245" blue="245"/></background_color>
+  <widget type="label" version="2.0.0">
+    <name>Title</name><text>Mock IOC — Tank Temperature</text>
+    <x>20</x><y>20</y><width>620</width><height>36</height>
+    <font><font family="Liberation Sans" style="BOLD" size="24.0"/></font>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Temperature label</name><text>Display temperature</text>
+    <x>20</x><y>90</y><width>260</width><height>32</height>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Display temperature</name>
+    <pv_name>L4-NSOPCPA-NL1:TK6:44:DisplayTemperature</pv_name>
+    <x>300</x><y>86</y><width>220</width><height>40</height>
+    <show_units>true</show_units><precision>2</precision>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Error label</name><text>Error code</text>
+    <x>20</x><y>150</y><width>260</width><height>32</height>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Error code</name><pv_name>L4-NSOPCPA-NL1:TK6:44:ErrorCode</pv_name>
+    <x>300</x><y>146</y><width>220</width><height>40</height>
+  </widget>
+</display>

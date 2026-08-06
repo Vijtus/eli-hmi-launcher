@@ -1,0 +1,46 @@
+appName: LabVIEW local contract smoke
+
+local:
+  workspaceRoot: '${APP_ROOT}/examples/labview-contract-workspace'
+  zoneSymbol: '${ELI_LABVIEW_CONTRACT_ZONE}'
+  monitoring:
+    reconcileIntervalMs: 100
+
+security:
+  allowedCommandRoots:
+    - '${APP_ROOT}/examples/labview-contract-workspace'
+  allowBareCommands: false
+
+entries:
+  - id: labview-contract-developer
+    name: LabVIEW Developer contract fixture
+    technology: LabVIEW
+    platform: LabVIEW
+    access:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: write
+      onAlreadyRunning: block
+      onUnknownState: block
+    target:
+      kind: labview-dev
+      hostName: '${ELI_LABVIEW_CONTRACT_HOST}'
+      iocName: '${ELI_LABVIEW_CONTRACT_IOC}'
+      iocType: Camera IOC
+      exeName: Developer Contract.exe
+
+  - id: labview-contract-epics
+    name: LabVIEW EPICS contract fixture
+    technology: LabVIEW
+    platform: LabVIEW
+    access:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: write
+      onAlreadyRunning: block
+      onUnknownState: block
+    target:
+      kind: labview-epics
+      guiName: '${ELI_LABVIEW_CONTRACT_GUI}'
+      guiType: Operator Panels
+      exeName: EPICS Contract.exe

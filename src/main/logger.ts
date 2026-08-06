@@ -8,6 +8,8 @@ import type { LaunchTarget } from "../shared/types";
 
 let logFilePath = "";
 let warnedOnce = false;
+const REDACTED = "[REDACTED]";
+const SENSITIVE_NAME = /(?:^|[-_])(password|passwd|token|secret|api[-_]?key|authorization|credential|auth)(?:$|[-_])/i;
 
 export function initLogger(filePath: string): void {
   logFilePath = filePath;
@@ -38,17 +40,97 @@ function write(record: Record<string, unknown>): void {
   }
 }
 
-function describeTarget(target: LaunchTarget, resolvedCommand?: string): Record<string, unknown> {
+function redactUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.username) {
+      url.username = REDACTED;
+    }
+    if (url.password) {
+      url.password = REDACTED;
+    }
+    for (const key of [...url.searchParams.keys()]) {
+      if (SENSITIVE_NAME.test(key)) {
+        url.searchParams.set(key, REDACTED);
+      }
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+export function redactLaunchArgs(args: string[]): string[] {
+  let redactNext = false;
+  return args.map((arg) => {
+    if (redactNext) {
+      redactNext = false;
+      return REDACTED;
+    }
+
+    const equalsIndex = arg.indexOf("=");
+    const name = equalsIndex >= 0 ? arg.slice(0, equalsIndex) : arg;
+    if (SENSITIVE_NAME.test(name)) {
+      if (equalsIndex >= 0) {
+        return `${name}=${REDACTED}`;
+      }
+      redactNext = true;
+      return arg;
+    }
+
+    if (/^https?:\/\//i.test(arg)) {
+      return redactUrl(arg);
+    }
+    return arg;
+  });
+}
+
+function describeTarget(
+  target: LaunchTarget,
+  resolvedCommand?: string,
+  resolvedArgs?: string[],
+): Record<string, unknown> {
   if (target.kind === "web") {
-    return { kind: "web", url: target.url };
+    return { kind: "web", url: redactUrl(target.url) };
   }
   if (target.kind === "folder") {
     return { kind: "folder", path: target.path };
   }
+  if (target.kind === "labview-dev") {
+    return {
+      kind: "labview-dev",
+      command: resolvedCommand,
+      args: redactLaunchArgs(resolvedArgs ?? []),
+      iocName: target.iocName,
+      hostName: target.hostName,
+      iocType: target.iocType,
+      exeName: target.exeName,
+    };
+  }
+  if (target.kind === "labview-epics") {
+    return {
+      kind: "labview-epics",
+      command: resolvedCommand,
+      args: redactLaunchArgs(resolvedArgs ?? []),
+      guiName: target.guiName,
+      guiType: target.guiType,
+      exeName: target.exeName,
+    };
+  }
+  if (target.kind === "phoebus") {
+    return {
+      kind: "phoebus",
+      command: resolvedCommand,
+      args: redactLaunchArgs(resolvedArgs ?? []),
+      ...(target.resource ? { resource: redactUrl(target.resource) } : {}),
+      ...(target.app ? { app: target.app } : {}),
+      ...(target.layout ? { layout: true } : {}),
+    };
+  }
   return {
     kind: "process",
     command: resolvedCommand ?? target.command,
-    args: target.args ?? [],
+    args: redactLaunchArgs(resolvedArgs ?? target.args ?? []),
   };
 }
 
@@ -57,6 +139,7 @@ export type LaunchLogInput = {
   label: string;
   target: LaunchTarget;
   resolvedCommand?: string;
+  resolvedArgs?: string[];
   ok: boolean;
   error?: string;
   durationMs: number;
@@ -67,7 +150,7 @@ export function logLaunch(input: LaunchLogInput): void {
     type: "launch",
     id: input.id,
     label: input.label,
-    ...describeTarget(input.target, input.resolvedCommand),
+    ...describeTarget(input.target, input.resolvedCommand, input.resolvedArgs),
     ok: input.ok,
     ...(input.error ? { error: input.error } : {}),
     durationMs: input.durationMs,

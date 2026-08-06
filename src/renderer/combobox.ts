@@ -39,6 +39,28 @@ export function matchOptionByTypeahead(
   return -1;
 }
 
+export type ComboboxIds = {
+  controlId: string;
+  listboxId: string;
+  valueId: string;
+};
+
+// Derive the element ids owned by one combobox instance.
+// `baseId` belongs to the caller-supplied mount element, so every id returned
+// here must differ from it: duplicate id attributes are invalid HTML and make
+// document.getElementById(baseId) resolve to the mount instead of the control.
+export function deriveComboboxIds(baseId: string): ComboboxIds {
+  return {
+    controlId: `${baseId}-control`,
+    listboxId: `${baseId}-listbox`,
+    valueId: `${baseId}-value`,
+  };
+}
+
+export function comboboxOptionId(baseId: string, index: number): string {
+  return `${baseId}-option-${index}`;
+}
+
 export function createCombobox(config: {
   mount: HTMLElement;
   labelId: string;
@@ -56,7 +78,7 @@ export function createCombobox(config: {
   let typeaheadTimer: ReturnType<typeof setTimeout> | undefined;
 
   const baseId = mount.id || `combobox-${Math.random().toString(36).slice(2)}`;
-  const listboxId = `${baseId}-listbox`;
+  const { listboxId, controlId, valueId } = deriveComboboxIds(baseId);
 
   const combo = document.createElement("div");
   combo.className = "combobox-control";
@@ -65,11 +87,14 @@ export function createCombobox(config: {
   combo.setAttribute("aria-haspopup", "listbox");
   combo.setAttribute("aria-expanded", "false");
   combo.setAttribute("aria-controls", listboxId);
-  combo.setAttribute("aria-labelledby", `${labelId} ${baseId}`);
-  combo.id = baseId;
+  // Accessible name = visible label + current value. The value span is
+  // referenced directly so the name does not depend on id-collision ordering.
+  combo.setAttribute("aria-labelledby", `${labelId} ${valueId}`);
+  combo.id = controlId;
 
   const valueText = document.createElement("span");
   valueText.className = "combobox-value";
+  valueText.id = valueId;
   combo.appendChild(valueText);
 
   const listbox = document.createElement("ul");
@@ -83,7 +108,7 @@ export function createCombobox(config: {
   mount.append(combo, listbox);
 
   function optionId(index: number): string {
-    return `${baseId}-option-${index}`;
+    return comboboxOptionId(baseId, index);
   }
 
   function renderValue(): void {

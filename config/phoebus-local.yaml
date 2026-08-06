@@ -1,0 +1,61 @@
+appName: CSI-744 Local Phoebus Acceptance
+
+local:
+  cssGuiRoot: ${APP_ROOT}/examples/phoebus-local
+  phoebus:
+    executable: ${APP_ROOT}/tools/phoebus-local/phoebus.sh
+    serverPort: 14918
+    settingsFile: ${APP_ROOT}/config/phoebus-local.properties
+    layoutFile: ${APP_ROOT}/examples/phoebus-local/local-alarm-layout.memento
+    startupTimeoutMs: 60000
+    # Measured on the locked 2026-07-20 build: its TCP listener opens before
+    # the JavaFX resource argument handler is installed.
+    resourceReadyDelayMs: 8000
+  monitoring:
+    reconcileIntervalMs: 1000
+
+security:
+  allowedCommandRoots:
+    - ${APP_ROOT}/tools/phoebus-local
+  allowBareCommands: false
+
+entries:
+  - id: local-phoebus-temperature
+    name: Local IOC Temperature
+    technology: Laser
+    section: CSI-744 local
+    platform: Phoebus
+    rmc: --
+    note: Reads the supplied mock IOC temperature PV.
+    target:
+      kind: phoebus
+      resource: temperature.bob
+
+  - id: local-phoebus-state
+    name: Local IOC State
+    technology: Laser
+    section: CSI-744 local
+    platform: Phoebus
+    rmc: --
+    note: Reads the supplied mock IOC state PV.
+    target:
+      kind: phoebus
+      resource: state.bob
+
+  - id: local-phoebus-flow
+    name: Local IOC Chiller Flow
+    technology: Cooling
+    section: CSI-744 local
+    platform: Phoebus
+    rmc: --
+    note: Reads the supplied mock IOC flow, level, and supply-temperature PVs.
+    target:
+      kind: phoebus
+      resource: flow.bob
+
+moreActions:
+  - id: local-phoebus-alarm-layout
+    label: Local alarm layout
+    target:
+      kind: phoebus
+      layout: true

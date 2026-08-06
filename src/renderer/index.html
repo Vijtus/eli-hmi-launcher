@@ -37,12 +37,18 @@
     </header>
 
     <main class="container-fluid">
+      <p id="catalog-staleness" class="catalog-staleness" role="status" hidden></p>
+
       <article id="status-banner" class="status-banner" role="alert" hidden>
         <span id="status-text"></span>
         <button id="status-dismiss" class="dismiss" type="button" aria-label="Dismiss message">&#10005;</button>
       </article>
 
-      <section class="table-panel" aria-label="Configured GUIs">
+      <section
+        class="table-panel"
+        aria-label="Configured GUIs"
+        data-runtime-state-column="active"
+      >
         <table>
           <colgroup>
             <col class="column-name" />
@@ -50,6 +56,7 @@
             <col class="column-section" />
             <col class="column-platform" />
             <col class="column-rmc" />
+            <col class="column-runtime-state" />
             <col class="column-note" />
           </colgroup>
           <thead>
@@ -59,6 +66,7 @@
               <th scope="col">Section</th>
               <th scope="col">Platform</th>
               <th scope="col">RMC</th>
+              <th scope="col">State</th>
               <th scope="col">Note</th>
             </tr>
           </thead>
