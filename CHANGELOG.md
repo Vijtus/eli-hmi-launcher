@@ -20,8 +20,9 @@
   expected alarm and both ends of the fanout without modifying the IOC image.
 - Expanded the Phoebus asset smoke from three single-PV assertions to exact PV
   inventories, unique widget names, CP macro and mock-label checks, navigation
-  target checks, and a fail-closed writable-PV allowlist. Both local configs and
-  the smoke now run in `npm run verify` and therefore in pull-request CI.
+  target checks, and writable-PV allowlist checks for the current controls.
+  Both local configs and the smoke now run in `npm run verify` and therefore in
+  pull-request CI.
 - A native IOC plus the locked Phoebus runtime displayed all three panels.
   On-screen controls changed all 14 legacy flashlamps STANDBY → RUN → STANDBY,
   unit-22 channel-1 state STANDBY → RUN → STANDBY, and its delay 50 → 77 → 50;
