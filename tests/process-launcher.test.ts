@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { spawnDetached } from "../src/main/process-launcher.ts";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  DEFAULT_STARTUP_GRACE_MS,
+  detachedSpawnOptions,
+  spawnDetached,
+} from "../src/main/process-launcher.ts";
+
+test("default startup grace remains 500 ms and is not a liveness assertion", () => {
+  assert.equal(DEFAULT_STARTUP_GRACE_MS, 500);
+});
 
 test("detached launch accepts a process that survives the startup window", async () => {
   await assert.doesNotReject(
@@ -36,4 +45,29 @@ test("detached launch preserves ENOENT when process spawning fails", async () =>
       return true;
     },
   );
+});
+
+test("detached launch passes shell metacharacters as literal argv", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eli-launcher-no-shell-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const output = path.join(root, "argv.txt");
+  const marker = path.join(root, "shell-ran.txt");
+  const literal = `; touch ${marker} & $(touch ${marker})`;
+
+  await spawnDetached(
+    process.execPath,
+    [
+      "-e",
+      "require('node:fs').writeFileSync(process.argv[1], process.argv[2], 'utf8')",
+      output,
+      literal,
+    ],
+    undefined,
+    undefined,
+    500,
+  );
+
+  assert.equal(await readFile(output, "utf8"), literal);
+  await assert.rejects(readFile(marker, "utf8"), /ENOENT/);
+  assert.equal(detachedSpawnOptions(undefined, undefined).shell, false);
 });

@@ -2,9 +2,16 @@ import "@picocss/pico/css/pico.min.css";
 import "./styles.css";
 
 import { filterLauncherRows, getUniqueMultiValues } from "../shared/filtering";
+import { catalogStalenessMessage } from "../shared/catalog-status";
 import { statusForLaunchResult } from "../shared/launch-status";
 import { createCombobox } from "./combobox";
-import type { LauncherAction, LauncherConfig, LauncherRow } from "../shared/types";
+import type {
+  LauncherAction,
+  LauncherConfig,
+  LauncherRow,
+  RuntimeItemState,
+  RuntimeSnapshot,
+} from "../shared/types";
 
 type AppState = {
   rows: LauncherRow[];
@@ -13,6 +20,7 @@ type AppState = {
   search: string;
   technology: string;
   section: string;
+  runtimeById: Map<string, RuntimeItemState>;
 };
 
 const state: AppState = {
@@ -22,6 +30,7 @@ const state: AppState = {
   search: "",
   technology: "",
   section: "",
+  runtimeById: new Map(),
 };
 
 const quickActionsElement = document.getElementById("quick-actions") as HTMLElement;
@@ -33,6 +42,7 @@ const statusText = document.getElementById("status-text") as HTMLElement;
 const statusDismiss = document.getElementById("status-dismiss") as HTMLButtonElement;
 const rowsElement = document.getElementById("launcher-rows") as HTMLTableSectionElement;
 const rowCountElement = document.getElementById("row-count") as HTMLParagraphElement;
+const catalogStalenessElement = document.getElementById("catalog-staleness") as HTMLParagraphElement;
 
 const technologyFilter = createCombobox({
   mount: technologyMount,
@@ -158,6 +168,46 @@ function appendCell(rowElement: HTMLTableRowElement, value: string, className?: 
   rowElement.appendChild(cell);
 }
 
+function runtimeLabel(runtime: RuntimeItemState | undefined): string {
+  if (!runtime) {
+    return "--";
+  }
+  if (runtime.stale) {
+    return "STALE";
+  }
+  if (runtime.status === "running") {
+    return runtime.runningInstances > 1 ? `RUNNING ${runtime.runningInstances}` : "RUNNING";
+  }
+  if (runtime.status === "shared") {
+    return "SHARED";
+  }
+  if (runtime.status === "handed-off") {
+    return "HANDOFF";
+  }
+  if (runtime.status === "stopped") {
+    return "STOPPED";
+  }
+  return "UNKNOWN";
+}
+
+function appendRuntimeCell(
+  rowElement: HTMLTableRowElement,
+  runtime: RuntimeItemState | undefined,
+): void {
+  const cell = document.createElement("td");
+  cell.className = "runtime-state-cell";
+  cell.textContent = runtimeLabel(runtime);
+  cell.dataset.runtimeStatus = runtime?.stale ? "stale" : (runtime?.status ?? "unobserved");
+  if (runtime) {
+    cell.title = runtime.detail;
+    cell.setAttribute("aria-label", `Runtime state: ${cell.textContent}. ${runtime.detail}`);
+  } else {
+    cell.title = "No launch has been observed in this launcher session.";
+    cell.setAttribute("aria-label", "Runtime state: no launch observed.");
+  }
+  rowElement.appendChild(cell);
+}
+
 function renderRows(): void {
   const rows = filterLauncherRows(state.rows, {
     search: state.search,
@@ -169,7 +219,7 @@ function renderRows(): void {
   if (rows.length === 0) {
     const emptyRow = document.createElement("tr");
     const emptyCell = document.createElement("td");
-    emptyCell.colSpan = 6;
+    emptyCell.colSpan = 7;
     emptyCell.className = "empty-row";
     emptyCell.textContent = "No GUIs match the current filters.";
     emptyRow.appendChild(emptyCell);
@@ -195,11 +245,17 @@ function renderRows(): void {
     appendCell(rowElement, displayList(row.section));
     appendCell(rowElement, row.platform);
     appendCell(rowElement, row.rmc);
+    appendRuntimeCell(rowElement, state.runtimeById.get(row.id));
     appendCell(rowElement, row.note);
     rowsElement.appendChild(rowElement);
   }
 
   rowCountElement.textContent = `${rows.length} of ${state.rows.length} GUIs shown`;
+}
+
+function applyRuntimeSnapshot(snapshot: RuntimeSnapshot): void {
+  state.runtimeById = new Map(snapshot.items.map((item) => [item.id, item]));
+  render();
 }
 
 function render(): void {
@@ -210,6 +266,9 @@ function applyConfig(config: LauncherConfig): void {
   state.rows = Array.isArray(config.rows) ? config.rows : [];
   state.quickActions = Array.isArray(config.quickActions) ? config.quickActions : [];
   state.moreActions = Array.isArray(config.moreActions) ? config.moreActions : [];
+  const staleness = catalogStalenessMessage(config.catalogStatus);
+  catalogStalenessElement.hidden = !staleness;
+  catalogStalenessElement.textContent = staleness ?? "";
 
   technologyFilter.setOptions(getUniqueMultiValues(state.rows, "technology").map((value) => ({ value, label: value })));
   sectionFilter.setOptions(getUniqueMultiValues(state.rows, "section").map((value) => ({ value, label: value })));
@@ -244,13 +303,22 @@ document.addEventListener("keydown", (event) => {
 
 async function initialize(): Promise<void> {
   try {
-    if (!window.launcherApi?.getConfig) {
+    if (
+      !window.launcherApi?.getConfig ||
+      !window.launcherApi?.getRuntimeStates ||
+      !window.launcherApi?.onRuntimeStates
+    ) {
       throw new Error("Launcher API is unavailable. Check that the preload script loaded correctly.");
     }
 
-    const config = await window.launcherApi.getConfig();
+    const [config, runtime] = await Promise.all([
+      window.launcherApi.getConfig(),
+      window.launcherApi.getRuntimeStates(),
+    ]);
+    window.launcherApi.onRuntimeStates(applyRuntimeSnapshot);
     setStatus("");
     applyConfig(config);
+    applyRuntimeSnapshot(runtime);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Config load failed: ${message}`, true);

@@ -6,3 +6,9 @@ dist/
 .DS_Store
 *.log
 .env
+.local/phoebus/
+.local/native-ioc-root/
+.local/xdotool/
+.local/acceptance/
+__pycache__/
+.pytest_cache/

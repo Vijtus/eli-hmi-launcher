@@ -94,7 +94,10 @@ test("invalid rows abort with row-numbered errors instead of guessed values", ()
     [2, 3, 4, 5, 6],
   );
   assert.match(result.errors[0].message, /Name is required/);
-  assert.match(result.errors[1].message, /must be process, web, or folder/);
+  assert.match(
+    result.errors[1].message,
+    /must be process, web, folder, labview-dev, labview-epics, or phoebus/,
+  );
   assert.match(result.errors[2].message, /http\(s\) URL/);
   assert.match(result.errors[3].message, /NAME=value/);
   assert.match(result.errors[4].message, /Enabled/);
@@ -127,4 +130,125 @@ test("YAML scalars that need quoting are quoted", () => {
   assert.equal(yamlScalar("it's"), "'it''s'");
   assert.equal(yamlScalar("123"), "'123'");
   assert.equal(yamlScalar("yes"), "'yes'");
+});
+
+test("intake conversion emits the four LabVIEW developer fields without a hand-written command", () => {
+  const extendedHeader =
+    HEADER + ",IOC name,Host name,IOC type,GUI name,GUI type,EXE name,Phoebus resource URI/path,Phoebus app name,Phoebus use configured layout (yes/no)";
+  const csv = [
+    extendedHeader,
+    "L4-GUI-DEV,Developer GUI,Laser,L4,LabVIEW,--,--,labview-dev,,,,,Owner,yes,,," +
+      ",IOC-L4-01,controls-host,MainIOC,,,Developer GUI.exe,,,",
+  ].join("\n");
+
+  const result = convertIntakeCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.match(result.yaml, /kind: labview-dev/);
+  assert.match(result.yaml, /iocName: IOC-L4-01/);
+  assert.match(result.yaml, /hostName: controls-host/);
+  assert.match(result.yaml, /iocType: MainIOC/);
+  assert.match(result.yaml, /exeName: Developer GUI\.exe/);
+  assert.doesNotMatch(result.yaml, /command:/);
+
+  const withLocal = result.yaml.replace(
+    "appName: L4 Launcher",
+    "appName: L4 Launcher\nlocal:\n  workspaceRoot: /srv/eli\n  zoneSymbol: L4",
+  );
+  const parsed = parseConfig(withLocal, { appRoot: "/tmp/app", configDir: "/tmp/cfg" });
+  const target = parsed.targetsById.get("l4-gui-dev");
+  assert.ok(target && target.kind === "labview-dev");
+  assert.equal(target.exeName, "Developer GUI.exe");
+});
+
+test("intake conversion emits the three LabVIEW EPICS fields without a hand-written command", () => {
+  const extendedHeader =
+    HEADER + ",IOC name,Host name,IOC type,GUI name,GUI type,EXE name,Phoebus resource URI/path,Phoebus app name,Phoebus use configured layout (yes/no)";
+  const csv = [
+    extendedHeader,
+    "L4-GUI-EPICS,EPICS GUI,Laser,L4,LabVIEW,--,--,labview-epics,,,,,Owner,yes,,," +
+      ",,,,MainPanels,Overview,EPICS Overview.exe,,,",
+  ].join("\n");
+
+  const result = convertIntakeCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.match(result.yaml, /kind: labview-epics/);
+  assert.match(result.yaml, /guiName: MainPanels/);
+  assert.match(result.yaml, /guiType: Overview/);
+  assert.match(result.yaml, /exeName: EPICS Overview\.exe/);
+  assert.doesNotMatch(result.yaml, /command:/);
+
+  const withLocal = result.yaml.replace(
+    "appName: L4 Launcher",
+    "appName: L4 Launcher\nlocal:\n  workspaceRoot: /srv/eli\n  zoneSymbol: L4",
+  );
+  const parsed = parseConfig(withLocal, { appRoot: "/tmp/app", configDir: "/tmp/cfg" });
+  const target = parsed.targetsById.get("l4-gui-epics");
+  assert.ok(target && target.kind === "labview-epics");
+  assert.equal(target.guiName, "MainPanels");
+});
+
+test("intake conversion emits a Phoebus server/resource target", () => {
+  const extendedHeader =
+    HEADER + ",IOC name,Host name,IOC type,GUI name,GUI type,EXE name,Phoebus resource URI/path,Phoebus app name,Phoebus use configured layout (yes/no)";
+  const csv = [
+    extendedHeader,
+    "L4-PHOEBUS,Panel,Laser,L4,Phoebus,--,--,phoebus,,,,,Owner,yes,,," +
+      ",,,,,,,panels/main.bob,<app-name-from-list>,",
+  ].join("\n");
+
+  const result = convertIntakeCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.match(result.yaml, /kind: phoebus/);
+  assert.match(result.yaml, /resource: panels\/main\.bob/);
+  assert.match(result.yaml, /app: '<app-name-from-list>'/);
+  assert.doesNotMatch(result.yaml, /command:/);
+
+  const withLocal = result.yaml.replace(
+    "appName: L4 Launcher",
+    "appName: L4 Launcher\nlocal:\n  cssGuiRoot: /srv/css\n  phoebus:\n    executable: /opt/phoebus/phoebus.sh\n    serverPort: 4918",
+  );
+  const parsed = parseConfig(withLocal, { appRoot: "/tmp/app", configDir: "/tmp/cfg" });
+  const target = parsed.targetsById.get("l4-phoebus");
+  assert.ok(target && target.kind === "phoebus");
+  assert.equal(target.resource, "panels/main.bob");
+  assert.equal(target.app, "<app-name-from-list>");
+});
+
+test("intake conversion can request the locally configured Phoebus layout", () => {
+  const extendedHeader =
+    HEADER + ",IOC name,Host name,IOC type,GUI name,GUI type,EXE name,Phoebus resource URI/path,Phoebus app name,Phoebus use configured layout (yes/no)";
+  const csv = [
+    extendedHeader,
+    "L4-ALARMS,Alarm layout,Laser,L4,Phoebus,--,--,phoebus,,,,,Owner,yes,,," +
+      ",,,,,,,,,yes",
+  ].join("\n");
+
+  const result = convertIntakeCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.match(result.yaml, /kind: phoebus/);
+  assert.match(result.yaml, /layout: true/);
+
+  const withLocal = result.yaml.replace(
+    "appName: L4 Launcher",
+    "appName: L4 Launcher\nlocal:\n  phoebus:\n    executable: /opt/phoebus/phoebus.sh\n    serverPort: 4918\n    layoutFile: /srv/css/alarm.memento",
+  );
+  const parsed = parseConfig(withLocal, { appRoot: "/tmp/app", configDir: "/tmp/cfg" });
+  const target = parsed.targetsById.get("l4-alarms");
+  assert.ok(target && target.kind === "phoebus");
+  assert.equal(target.layout, true);
+});
+
+test("intake rejects a per-entry Phoebus layout path", () => {
+  const extendedHeader =
+    HEADER + ",IOC name,Host name,IOC type,GUI name,GUI type,EXE name,Phoebus resource URI/path,Phoebus app name,Phoebus use configured layout (yes/no)";
+  const csv = [
+    extendedHeader,
+    "L4-ALARMS,Alarm layout,Laser,L4,Phoebus,--,--,phoebus,,,,,Owner,yes,,," +
+      ",,,,,,,,,C:/invented/alarm.memento",
+  ].join("\n");
+
+  const result = convertIntakeCsv(csv);
+  assert.equal(result.yaml, "");
+  assert.match(result.errors[0]?.message ?? "", /must be yes or no/);
+  assert.match(result.errors[0]?.message ?? "", /local\.phoebus\.layoutFile/);
 });

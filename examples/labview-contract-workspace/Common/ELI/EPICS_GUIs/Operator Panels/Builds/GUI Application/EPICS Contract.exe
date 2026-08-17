@@ -1,0 +1,54 @@
+#!/usr/bin/env sh
+set -eu
+
+# Executable POSIX fixture for the CSI-847 launch contract. This is not a
+# LabVIEW binary and must not be used as evidence that LabVIEW ran.
+: "${ELI_LABVIEW_FIXTURE_CAPTURE_DIR:?ELI_LABVIEW_FIXTURE_CAPTURE_DIR is required}"
+
+lifetime="${ELI_LABVIEW_FIXTURE_LIFETIME_SECONDS:-15}"
+case "$lifetime" in
+  ''|*[!0-9]*)
+    printf '%s\n' 'ELI_LABVIEW_FIXTURE_LIFETIME_SECONDS must be a positive integer' >&2
+    exit 64
+    ;;
+esac
+if [ "$lifetime" -lt 1 ]; then
+  printf '%s\n' 'ELI_LABVIEW_FIXTURE_LIFETIME_SECONDS must be a positive integer' >&2
+  exit 64
+fi
+
+capture_stem="${ELI_LABVIEW_FIXTURE_CAPTURE_DIR}/launch-$$"
+argv_temp="${capture_stem}.argv.nul.tmp"
+pid_temp="${capture_stem}.pid.tmp"
+identity_temp="${capture_stem}.start-identity.tmp"
+
+cleanup_temporary_files() {
+  rm -f "$argv_temp" "$pid_temp" "$identity_temp"
+}
+trap cleanup_temporary_files EXIT HUP INT TERM
+
+umask 077
+{
+  printf '%s\0' "$0"
+  for argument do
+    printf '%s\0' "$argument"
+  done
+} > "$argv_temp"
+mv "$argv_temp" "${capture_stem}.argv.nul"
+
+sed 's/^.*) //' "/proc/$$/stat" | awk '{print $20}' > "$identity_temp"
+case "$(cat "$identity_temp")" in
+  ''|*[!0-9]*)
+    printf '%s\n' 'Could not capture Linux process start identity' >&2
+    exit 70
+    ;;
+esac
+mv "$identity_temp" "${capture_stem}.start-identity"
+
+# Publish the PID receipt last. Readers can treat it as the indication that the
+# matching argv and process-identity records are ready.
+printf '%s\n' "$$" > "$pid_temp"
+mv "$pid_temp" "${capture_stem}.pid"
+
+trap - EXIT HUP INT TERM
+exec /bin/sleep "$lifetime"

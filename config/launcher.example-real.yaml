@@ -1,5 +1,47 @@
 appName: L4 Launcher
 
+# Machine-owned values. Replace every angle-bracket value; do not copy site
+# names or paths from another workstation.
+local:
+  workspaceRoot: '<workspace-root>'
+  cssGuiRoot: '<css-gui-root>'
+  zoneSymbol: '<zone-symbol>'
+  phoebus:
+    executable: '<phoebus-executable>'
+    serverPort: 4918 # confirm site reservation; see BLOCKERS.md
+    settingsFile: '<phoebus-settings-file>'
+    # layoutFile: '<site-created-alarm-layout-memento>' # required by layout: true
+    startupTimeoutMs: 30000
+  hosts: {}
+  hmiApi:
+    baseUrl: '<hmi-api-base-url>'
+    stationId: '<optional-station-id>'
+    authTokenEnv: ELI_HMI_LIFECYCLE_TOKEN
+    requestTimeoutMs: 2000
+    heartbeatIntervalMs: 5000
+  monitoring:
+    reconcileIntervalMs: 5000
+
+# External catalog mechanism (leave commented until maintainers choose and
+# provide the authoritative path; see docs/DECISION-catalog-distribution.md):
+# catalog:
+#   sources:
+#     - id: shared-l4
+#       path: '<network-share-or-local-catalog-path>'
+
+# Launch restrictions are enforced in the Electron main process before spawn.
+# The intended LabVIEW rule and the signal that denotes write mode remain
+# unresolved in BLOCKERS.md. Until maintainers answer, use the restrictive
+# single-instance default and leave launchMode unknown rather than guessing.
+access:
+  platforms:
+    LabVIEW:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: unknown
+      onAlreadyRunning: block
+      onUnknownState: block
+
 # ===========================================================================
 # DEPLOYMENT TEMPLATE — replace every path/URL below with real L4 values.
 # This file is a copy target, not a runnable mock. See CONFIG_SCHEMA.md.
@@ -35,9 +77,66 @@ appName: L4 Launcher
 security:
   allowedCommandRoots:
     - /opt/eli/l4-launchers
+    - '${local.workspaceRoot}'
   allowBareCommands: false
 
 entries:
+  - id: example-labview-developer
+    name: '<LabVIEW developer HMI name>'
+    technology: --
+    section: --
+    platform: LabVIEW
+    rmc: --
+    note: 'Replace every angle-bracket value before deployment.'
+    access:
+      launchMode: unknown # replace only after BLK-004 defines read/write mode
+    target:
+      kind: labview-dev
+      iocName: '<ioc-name>'
+      hostName: '<host-name>'
+      iocType: '<ioc-type>'
+      exeName: '<exe-name>'
+
+  - id: example-labview-epics
+    name: '<LabVIEW EPICS HMI name>'
+    technology: --
+    section: --
+    platform: LabVIEW
+    rmc: --
+    note: 'Replace every angle-bracket value before deployment.'
+    access:
+      launchMode: unknown # replace only after BLK-004 defines read/write mode
+    target:
+      kind: labview-epics
+      guiName: '<gui-name>'
+      guiType: '<gui-type>'
+      exeName: '<exe-name>'
+
+  - id: example-phoebus
+    name: '<Phoebus panel name>'
+    technology: --
+    section: --
+    platform: Phoebus
+    rmc: --
+    note: 'Replace every angle-bracket value before deployment.'
+    target:
+      kind: phoebus
+      resource: '<panel-resource-uri-or-path>'
+      app: '<app-name-from-site-phoebus-list>'
+
+  # Alarm layout placeholder. Leave commented until maintainers provide the
+  # site-created memento and internal app names recorded in BLOCKERS.md.
+  # - id: example-phoebus-alarm-layout
+  #   name: '<alarm layout name>'
+  #   technology: --
+  #   section: --
+  #   platform: Phoebus
+  #   rmc: --
+  #   note: 'Requires local.phoebus.layoutFile and a stopped Phoebus server.'
+  #   target:
+  #     kind: phoebus
+  #     layout: true
+
   - id: l4-cis-vcs
     name: L4 CIS VCS
     technology: Vacuum
