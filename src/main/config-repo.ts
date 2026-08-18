@@ -29,6 +29,7 @@ const WORKTREE_DIR = "repo";
 export type ConfigRepoOptions = {
   url: string;
   token?: string | undefined;
+  username?: string | undefined;
   ref?: string | undefined;
   cacheDir: string;
   timeoutMs?: number | undefined;
@@ -356,7 +357,7 @@ export async function ensureConfigRepo(
   const attempts = Math.max(1, (options.retries ?? DEFAULT_RETRIES) + 1);
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? (() => new Date());
-  const onAuth = createAuthCallback(options.token);
+  const onAuth = createAuthCallback(options.token, options.username);
   const warnings: string[] = [];
   const previous = readState(cacheDir);
   const cached = hasWorktree(cacheDir);
@@ -364,14 +365,14 @@ export async function ensureConfigRepo(
   const useCache = (reason: string): ConfigRepoResult => {
     if (!cached || !previous) {
       throw new ConfigRepoNetworkError(
-        `Config repo '${redactSecret(options.url, options.token)}' is unreachable and no usable local cache exists ` +
+        `Config repo '${redactSecret(options.url, options.token, options.username)}' is unreachable and no usable local cache exists ` +
           `at '${cacheDir}'. Cause: ${reason}. ` +
           `Remedy: restore network access to the config repo, or deploy a local config file and unset ` +
           `ELI_LAUNCHER_CONFIG_REPO_URL.`,
       );
     }
     warnings.push(
-      `Config repo '${redactSecret(options.url, options.token)}' could not be refreshed; using the cached ` +
+      `Config repo '${redactSecret(options.url, options.token, options.username)}' could not be refreshed; using the cached ` +
         `configuration from commit ${previous.commitSha} fetched at ${previous.fetchedAt}. ` +
         `Cause: ${reason}.`,
     );
@@ -414,13 +415,13 @@ export async function ensureConfigRepo(
       return await finish();
     } catch (error) {
       if (isNetworkError(error)) {
-        return useCache(redactError(error, options.token));
+        return useCache(redactError(error, options.token, options.username));
       }
       // Anything else on an existing cache is treated as local corruption or a
       // ref that no longer resolves: discard and re-clone exactly once.
       warnings.push(
         `Local config repo cache at '${dir}' was unusable and has been discarded before re-cloning. ` +
-          `Cause: ${redactError(error, options.token)}.`,
+          `Cause: ${redactError(error, options.token, options.username)}.`,
       );
       discardCache(cacheDir);
       ensureCacheDir(cacheDir);
@@ -431,11 +432,11 @@ export async function ensureConfigRepo(
     await runWithRetries(attempts, timeoutMs, sleep, (budget) => doClone(attemptFor(budget)));
   } catch (error) {
     if (isNetworkError(error)) {
-      return useCache(redactError(error, options.token));
+      return useCache(redactError(error, options.token, options.username));
     }
     throw new Error(
-      `Config repo '${redactSecret(options.url, options.token)}' could not be cloned into '${dir}'. ` +
-        `Cause: ${redactError(error, options.token)}. ` +
+      `Config repo '${redactSecret(options.url, options.token, options.username)}' could not be cloned into '${dir}'. ` +
+        `Cause: ${redactError(error, options.token, options.username)}. ` +
         `Remedy: check ELI_LAUNCHER_CONFIG_REPO_URL, ELI_LAUNCHER_CONFIG_REPO_REF, and the access token.`,
     );
   }

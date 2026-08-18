@@ -65,8 +65,9 @@ environment variables, and the resolution order. In schema terms:
 | host `P4-workspace:` | `local.workspaceRoot` |
 | host `css-gui:` | `local.cssGuiRoot` |
 | host `css-install:` | `local.phoebus.installRoot` |
-| host `hmi-server:` | `local.hosts."hmi-server"` |
+| host `hmi-server:` | `local.hmiApi.baseUrl` (+ `local.hosts."hmi-server"`) |
 | host / zone `local:` | merged into `local:` verbatim |
+| host / zone `launcher:` | `appName`, `quickActions`, `moreActions` (replaces the root file's) |
 | zone `labview-dev:` etc. | `entries:`, as a catalog source named `zone:<ZONE>` |
 
 Precedence is zone file, then host file, then the host file's own `local:` block;
@@ -78,13 +79,20 @@ declared `catalog.sources`, so the "later source wins" rule below applies to the
 unchanged, and an unreachable repo marks them `cached`/`stale` exactly like an
 unreachable filesystem catalog.
 
+`appName`, `quickActions` and `moreActions` may be set from a `launcher:` block in
+the zone or host document; the host wins, and a present value REPLACES the root
+file's rather than merging with it. Omitting the block leaves the root file in
+charge.
+
 `security:` and `access:` are **never** taken from the config repo. This file
 remains the trust root that decides which commands may be spawned; a repository
 that can be pushed to must not be able to relax `security.allowedCommandRoots`.
 
-`hmi-server` is intentionally not mapped to `local.hmiApi.baseUrl`: the observed
-value has no URL scheme, and a non-loopback `baseUrl` must be HTTPS and carry
-`authTokenEnv`, so mapping it would make every host config fail validation.
+`hmi-server` becomes the lifecycle API base URL. A bare `host:port` yields
+`http://host:port/api/lifecycle/v1` plus `allowInsecureTransport: true`; a value
+that already carries a scheme is used as written and keeps the strict rules; a
+value that already carries a path is used verbatim. See README.md > How
+`css-install` and `hmi-server` are interpreted.
 
 ## Local machine settings
 
@@ -119,10 +127,18 @@ local:
 `local.phoebus.installRoot` is the Phoebus install DIRECTORY, whereas
 `local.phoebus.executable` is a FILE. It exists because the git config repo's
 `css-install` key names a directory (`C:\CSS Phoebus\product-5.0.2`). When
-`executable` is absent it is derived as `<installRoot>/phoebus.bat` on Windows and
-`<installRoot>/phoebus.sh` elsewhere; an explicit `executable` always wins. The
-launcher-script filename is an assumption about the site Phoebus distribution and
-is listed in `BLOCKERS.md` for confirmation.
+`executable` is absent, the install root is PROBED for `phoebus.bat`, then
+`phoebus.sh`, then `phoebus`, and the first that exists is used. When none exist —
+the normal case when validating a Windows deployment from a POSIX workstation —
+the platform default is used so the config still loads and the missing path is
+reported by the ordinary existence check at launch. An explicit `executable`
+always wins.
+
+`local.hmiApi.allowInsecureTransport` permits a lifecycle API reached over plain
+HTTP on a non-loopback host. It is set automatically when the config repo's
+`hmi-server` key gives a bare `host:port`. It never permits a credential in
+cleartext: `authTokenEnv` combined with a plain-HTTP non-loopback `baseUrl` is
+refused outright. Set it to `false` to restore the strict HTTPS requirement.
 
 The example values above illustrate shape only; deployed values must come from
 the control-system maintainers. `local.phoebus.serverPort`, when present, must

@@ -97,6 +97,12 @@ export type ConfigEntrySource = {
 export type ConfigOverlay = {
   local?: Record<string, unknown>;
   entrySources?: ConfigEntrySource[];
+  // Launcher-level settings the config repo may own. Absent means "the root file
+  // decides"; present REPLACES the root file's value, matching the list rule used
+  // everywhere else in the merge.
+  appName?: string | undefined;
+  quickActions?: unknown;
+  moreActions?: unknown;
   warnings?: string[];
 };
 
@@ -346,12 +352,28 @@ function parsePlatformAccessPolicies(value: unknown): Map<string, LaunchAccessPo
 // `local.phoebus.installRoot` is the Phoebus INSTALL DIRECTORY, which is what the
 // config repo's `css-install` key carries (e.g. `C:\\CSS Phoebus\\product-5.0.2`).
 // `local.phoebus.executable` is a FILE. An explicit executable always wins; only
-// when it is absent is one derived from the install root, using the launcher
-// script name the Phoebus distribution ships per platform.
+// when it is absent is one derived from the install root.
+//
+// The launcher script name differs between Phoebus distributions, so the install
+// root is PROBED rather than guessed: the first of these that actually exists is
+// used. Only when none of them exist — which is the normal case when validating a
+// Windows config on a POSIX workstation — does it fall back to the platform
+// default, so the config still loads and the missing path is reported by the
+// ordinary existence check at launch instead of at parse time.
+export const PHOEBUS_LAUNCHER_CANDIDATES = ["phoebus.bat", "phoebus.sh", "phoebus"] as const;
+
 export const PHOEBUS_LAUNCHER_BY_PLATFORM: Record<string, string> = {
   win32: "phoebus.bat",
   default: "phoebus.sh",
 };
+
+// A Windows-style root is kept Windows-style even on POSIX, so a config authored
+// for a workstation reads back unchanged in `dump-config`.
+function joinInstallRoot(installRoot: string, fileName: string): string {
+  const trimmed = installRoot.replace(/[\\/]+$/, "");
+  const separator = trimmed.includes("\\") && !trimmed.includes("/") ? "\\" : path.sep;
+  return `${trimmed}${separator}${fileName}`;
+}
 
 function resolvePhoebusExecutable(phoebus: RawObject): string | undefined {
   const explicit = readOptionalText(phoebus["executable"]);
@@ -362,10 +384,20 @@ function resolvePhoebusExecutable(phoebus: RawObject): string | undefined {
   if (!installRoot) {
     return undefined;
   }
-  const launcher =
+  for (const candidate of PHOEBUS_LAUNCHER_CANDIDATES) {
+    const resolved = joinInstallRoot(installRoot, candidate);
+    try {
+      if (existsSync(resolved)) {
+        return resolved;
+      }
+    } catch {
+      // An unreadable install root is not a parse error; fall through to the
+      // platform default and let the launch-time check report it.
+    }
+  }
+  const fallback =
     PHOEBUS_LAUNCHER_BY_PLATFORM[os.platform()] ?? PHOEBUS_LAUNCHER_BY_PLATFORM["default"];
-  const separator = installRoot.includes("\\") && !installRoot.includes("/") ? "\\" : path.sep;
-  return `${installRoot.replace(/[\\/]+$/, "")}${separator}${launcher}`;
+  return joinInstallRoot(installRoot, fallback as string);
 }
 
 function parseLocalMachineConfig(value: unknown): LocalMachineConfig {
@@ -478,6 +510,15 @@ function parseLocalMachineConfig(value: unknown): LocalMachineConfig {
             heartbeatIntervalMs: readOptionalPositiveInteger(
               hmiApi["heartbeatIntervalMs"],
               "local.hmiApi.heartbeatIntervalMs",
+            ),
+          }
+        : {}),
+      ...(readOptionalBool(hmiApi["allowInsecureTransport"], "local.hmiApi.allowInsecureTransport") !==
+      undefined
+        ? {
+            allowInsecureTransport: readOptionalBool(
+              hmiApi["allowInsecureTransport"],
+              "local.hmiApi.allowInsecureTransport",
             ),
           }
         : {}),
@@ -1376,8 +1417,14 @@ function parseConfigObject(
     [{ id: "inline", rows: inlineRows }, ...loadedCatalog.sources],
     warnings,
   );
-  const quickActionsWithTargets = parseActions(parsed["quickActions"], "Quick");
-  const moreActionsWithTargets = parseActions(parsed["moreActions"], "More");
+  const quickActionsWithTargets = parseActions(
+    base.overlay?.quickActions ?? parsed["quickActions"],
+    "Quick",
+  );
+  const moreActionsWithTargets = parseActions(
+    base.overlay?.moreActions ?? parsed["moreActions"],
+    "More",
+  );
   const platformAccessPolicies = parsePlatformAccessPolicies(parsed["access"]);
 
   const targetsById = new Map<string, LaunchTarget>();
@@ -1432,7 +1479,7 @@ function parseConfigObject(
   const sources = [inlineStatus, ...loadedCatalog.statuses];
 
   return {
-    appName: readText(parsed["appName"], DEFAULT_APP_NAME),
+    appName: readText(base.overlay?.appName ?? parsed["appName"], DEFAULT_APP_NAME),
     rows: rowsWithTargets.map(({ target: _t, access: _access, ...row }) => row),
     quickActions: quickActionsWithTargets.map(({ target: _t, access: _access, ...a }) => a),
     moreActions: moreActionsWithTargets.map(({ target: _t, access: _access, ...a }) => a),

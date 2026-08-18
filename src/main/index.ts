@@ -518,7 +518,7 @@ async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
     return await resolveDynamicConfig(options, await defaultDeps());
   } catch (error) {
     // Redact before the message can reach a log line or the error window.
-    throw new Error(redactError(error, options.token));
+    throw new Error(redactError(error, options.token, options.username));
   }
 }
 
@@ -562,7 +562,11 @@ async function bootstrap(): Promise<void> {
     logEvent(provenance.source === "cached" ? "warn" : "info", "Config repo resolved", {
       ...provenance,
       // The URL may embed userinfo if an operator pasted credentials into it.
-      url: redactError(provenance.url, process.env[ "ELI_LAUNCHER_CONFIG_REPO_TOKEN" ]),
+      url: redactError(
+        provenance.url,
+        process.env["ELI_LAUNCHER_CONFIG_REPO_TOKEN"],
+        process.env["ELI_LAUNCHER_CONFIG_REPO_USERNAME"],
+      ),
     });
     if (provenance.source === "cached") {
       logEvent(

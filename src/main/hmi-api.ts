@@ -204,7 +204,7 @@ function isLoopbackHost(hostname: string): boolean {
   );
 }
 
-function parseBaseUrl(value: string): URL {
+function parseBaseUrl(value: string, allowInsecureTransport = false): URL {
   let url: URL;
   try {
     url = new URL(value);
@@ -223,8 +223,17 @@ function parseBaseUrl(value: string): URL {
   if (url.hash) {
     throw new Error("`local.hmiApi.baseUrl` must not contain a fragment.");
   }
-  if (!isLoopbackHost(url.hostname) && url.protocol !== "https:") {
-    throw new Error("A non-loopback `local.hmiApi.baseUrl` must use HTTPS.");
+  // Plain HTTP to a non-loopback host is refused unless the config explicitly
+  // opts in. The opt-in is set automatically when the config repo's `hmi-server`
+  // key gives a bare `host:port`, which reads as a trusted site LAN; setting
+  // `local.hmiApi.allowInsecureTransport: false` forces the strict rule back on.
+  if (!isLoopbackHost(url.hostname) && url.protocol !== "https:" && !allowInsecureTransport) {
+    throw new Error(
+      "A non-loopback `local.hmiApi.baseUrl` must use HTTPS, or set " +
+        "`local.hmiApi.allowInsecureTransport: true` for a trusted site network. " +
+        "Remedy: give `hmi-server` a full `https://…` URL in the config repo, or accept plain " +
+        "HTTP explicitly.",
+    );
   }
   url.pathname = url.pathname.replace(/\/+$/, "");
   return url;
@@ -270,7 +279,7 @@ export class HttpHmiApiAdapter implements HmiApiAdapter {
   };
 
   constructor(config: Required<Pick<LocalHmiApiConfig, "baseUrl">> & LocalHmiApiConfig, dependencies: HttpAdapterDependencies = {}) {
-    this.baseUrl = parseBaseUrl(config.baseUrl);
+    this.baseUrl = parseBaseUrl(config.baseUrl, config.allowInsecureTransport === true);
     this.stationId = config.stationId?.trim() || os.hostname();
     this.timeoutMs = config.requestTimeoutMs ?? DEFAULT_HMI_API_REQUEST_TIMEOUT_MS;
     this.heartbeatIntervalMs =
@@ -285,7 +294,21 @@ export class HttpHmiApiAdapter implements HmiApiAdapter {
     const env = dependencies.env ?? process.env;
     const tokenEnv = config.authTokenEnv?.trim();
     const remote = !isLoopbackHost(this.baseUrl.hostname);
-    if (remote && !tokenEnv) {
+    const insecure = config.allowInsecureTransport === true;
+
+    // A bearer token must never leave the machine in cleartext. This holds even
+    // with the insecure-transport opt-in: that opt-in exists for a service with
+    // no credential to protect, not as a way to weaken one that has.
+    if (tokenEnv && this.baseUrl.protocol === "http:" && !isLoopbackHost(this.baseUrl.hostname)) {
+      throw new Error(
+        "`local.hmiApi.authTokenEnv` cannot be used with a plain-HTTP, non-loopback " +
+          "`local.hmiApi.baseUrl`: the token would be sent in cleartext. " +
+          "Remedy: use an `https://` URL, or remove `authTokenEnv` if the service needs no token.",
+      );
+    }
+    // A remote API normally has to authenticate. The opt-in also covers a site
+    // service that has no auth at all, which is what a bare `host:port` implies.
+    if (remote && !tokenEnv && !insecure) {
       throw new Error("A remote lifecycle API requires `local.hmiApi.authTokenEnv`.");
     }
     if (tokenEnv) {

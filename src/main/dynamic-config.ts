@@ -21,7 +21,7 @@ import {
   type ConfigRepoDeps,
   type ConfigRepoResult,
 } from "./config-repo";
-import { hostPassthrough, mapHostDocumentToLocal } from "./host-config-mapping";
+import { hostPassthrough, launcherBlock, mapHostDocumentToLocal } from "./host-config-mapping";
 import {
   readZoneName,
   resolveHostDocument,
@@ -33,6 +33,7 @@ import { adaptZoneDocument } from "./zone-adapter";
 export const ENV = {
   url: "ELI_LAUNCHER_CONFIG_REPO_URL",
   token: "ELI_LAUNCHER_CONFIG_REPO_TOKEN",
+  username: "ELI_LAUNCHER_CONFIG_REPO_USERNAME",
   ref: "ELI_LAUNCHER_CONFIG_REPO_REF",
   subpath: "ELI_LAUNCHER_CONFIG_REPO_SUBPATH",
   cacheDir: "ELI_LAUNCHER_CONFIG_CACHE_DIR",
@@ -48,6 +49,7 @@ export type EnvLike = Record<string, string | undefined>;
 export type DynamicConfigOptions = {
   url: string;
   token?: string | undefined;
+  username?: string | undefined;
   ref?: string | undefined;
   subpath: string;
   cacheDir: string;
@@ -118,6 +120,7 @@ export function readDynamicConfigEnv(
   return {
     url,
     token: text(env, ENV.token),
+    username: text(env, ENV.username),
     ref: text(env, ENV.ref),
     subpath: text(env, ENV.subpath) ?? DEFAULT_SUBPATH,
     cacheDir: text(env, ENV.cacheDir) ?? defaults.cacheDir ?? defaultCacheDir(),
@@ -160,11 +163,27 @@ export function resolveFromCheckout(
     ? merged
     : {}) as Record<string, unknown>;
 
+  // Launcher-level settings: zone is the base, the host overrides it, exactly as
+  // for `local:`. Absent on both means the root config file keeps deciding.
+  const launcherSettings = deepMerge(
+    launcherBlock(zone.document) ?? {},
+    launcherBlock(host.document) ?? {},
+  ) as Record<string, unknown>;
+  const launcherAppName =
+    typeof launcherSettings["appName"] === "string" ? launcherSettings["appName"] : undefined;
+
   const warnings = [...repo.warnings, ...hostMapping.warnings, ...adapted.warnings];
 
   return {
     overlay: {
       local,
+      ...(launcherAppName ? { appName: launcherAppName } : {}),
+      ...(launcherSettings["quickActions"] !== undefined
+        ? { quickActions: launcherSettings["quickActions"] }
+        : {}),
+      ...(launcherSettings["moreActions"] !== undefined
+        ? { moreActions: launcherSettings["moreActions"] }
+        : {}),
       entrySources: [
         {
           id: `zone:${zone.name}`,
@@ -206,6 +225,7 @@ export async function resolveDynamicConfig(
     {
       url: options.url,
       token: options.token,
+      username: options.username,
       ref: options.ref,
       cacheDir: options.cacheDir,
       timeoutMs: options.timeoutMs,

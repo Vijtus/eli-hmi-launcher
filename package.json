@@ -12,6 +12,7 @@
     "typecheck": "tsc -b",
     "validate-config": "tsx scripts/validate-config.ts",
     "dump-config": "tsx scripts/dump-config.ts",
+    "demo:git-config": "tsx tools/demo-git-config.mts",
     "intake-to-yaml": "tsx scripts/intake-to-yaml.ts",
     "smoke:hmi-lifecycle": "tsx scripts/smoke-hmi-lifecycle.ts",
     "smoke:labview-contract": "tsx scripts/smoke-labview-contract.ts",

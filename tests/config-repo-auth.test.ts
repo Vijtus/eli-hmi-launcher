@@ -19,6 +19,34 @@ test("a configured token becomes in-memory basic credentials, never argv", () =>
   assert.equal(JSON.stringify({ onAuth }), "{}");
 });
 
+// GitLab deploy tokens are issued as a username/token PAIR and cannot use the
+// GitHub arrangement at all; GitLab PATs accept any username; Bitbucket app
+// passwords pair with the account name.
+test("a configured username switches to the username+token arrangement", () => {
+  const onAuth = createAuthCallback(TOKEN, "eli-launcher-deploy");
+  assert.ok(onAuth);
+  assert.deepEqual(onAuth(), { username: "eli-launcher-deploy", password: TOKEN });
+});
+
+test("a blank username falls back to the token-as-username arrangement", () => {
+  assert.deepEqual(createAuthCallback(TOKEN, "   ")?.(), {
+    username: TOKEN,
+    password: TOKEN_PASSWORD,
+  });
+});
+
+test("a username without a token is still an anonymous clone", () => {
+  assert.equal(createAuthCallback(undefined, "someone"), undefined);
+});
+
+test("the username+token Basic blob is redacted when the username is supplied", () => {
+  const blob = Buffer.from(`eli-launcher-deploy:${TOKEN}`, "utf8").toString("base64");
+  // Bare blob, with no `Authorization:` prefix for the generic rule to catch.
+  const redacted = redactSecret(`captured credential ${blob}`, TOKEN, "eli-launcher-deploy");
+  assert.ok(!redacted.includes(blob), "the username arrangement must be redacted too");
+  assert.match(redacted, /captured credential \[REDACTED\]/);
+});
+
 test("an absent or blank token yields no callback, so the clone is anonymous", () => {
   assert.equal(createAuthCallback(undefined), undefined);
   assert.equal(createAuthCallback(""), undefined);

@@ -205,7 +205,7 @@ const ADAPTERS: Record<ZoneGroup, (item: RawObject, index: number, filePath: str
 };
 
 // Keys that live at the top level of a zone document but are not HMI groups.
-const NON_GROUP_KEYS = new Set(["zone", "description", "notes", "local"]);
+const NON_GROUP_KEYS = new Set(["zone", "description", "notes", "local", "launcher"]);
 
 export function adaptZoneDocument(document: RawObject, filePath: string): ZoneAdaptResult {
   const entries: RawObject[] = [];

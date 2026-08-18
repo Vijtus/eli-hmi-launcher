@@ -140,6 +140,11 @@ export type LocalHmiApiConfig = {
   authTokenEnv?: string;
   requestTimeoutMs?: number;
   heartbeatIntervalMs?: number;
+  // Opt-in for a lifecycle API reached over plain HTTP on a trusted site LAN.
+  // Set automatically when the config repo's `hmi-server` key gives a bare
+  // `host:port` with no scheme. It never permits sending a token in cleartext —
+  // HTTP combined with `authTokenEnv` is refused outright.
+  allowInsecureTransport?: boolean;
 };
 
 export type LocalMonitoringConfig = {

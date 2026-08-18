@@ -29,7 +29,7 @@ async function main(): Promise<void> {
         process.stderr.write(`WARNING  ${warning}\n`);
       }
     } catch (error) {
-      throw new Error(redactError(error, options.token));
+      throw new Error(redactError(error, options.token, options.username));
     }
   } else {
     process.stderr.write(

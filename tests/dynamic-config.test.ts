@@ -97,6 +97,7 @@ test("every environment variable is read", () => {
   const options = readDynamicConfigEnv({
     [ENV.url]: "https://git.example.org/c.git",
     [ENV.token]: "ghp_x",
+    [ENV.username]: "deploy-token-user",
     [ENV.ref]: "v1.2.3",
     [ENV.subpath]: "other",
     [ENV.cacheDir]: "/var/cache/eli",
@@ -107,6 +108,7 @@ test("every environment variable is read", () => {
   assert.deepEqual(options, {
     url: "https://git.example.org/c.git",
     token: "ghp_x",
+    username: "deploy-token-user",
     ref: "v1.2.3",
     subpath: "other",
     cacheDir: "/var/cache/eli",
@@ -202,6 +204,108 @@ test("a host `local:` block wins over the kebab-case aliases", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Launcher-level settings owned by the config repo
+// ---------------------------------------------------------------------------
+
+test("a zone can own appName and the action buttons", () => {
+  const t = tree({
+    "zone/TESTZ.yaml":
+      "launcher:\n" +
+      "  appName: L4 Launcher — TESTZ\n" +
+      "  quickActions:\n" +
+      "    - id: data-browser\n      label: Data Browser\n      target: { kind: web, url: 'https://example.local/db' }\n" +
+      "  moreActions:\n" +
+      "    - id: sequencer\n      label: Sequencer\n      target: { kind: web, url: 'https://example.local/seq' }\n" +
+      "labview-dev:\n",
+  });
+  try {
+    const parsed = loadConfigFromFile(t.configPath, {
+      appRoot: t.appRoot,
+      configDir: t.configDir,
+      overlay: resolve(t).overlay,
+    });
+    assert.equal(parsed.appName, "L4 Launcher — TESTZ");
+    assert.deepEqual(parsed.quickActions.map((a) => a.id), ["data-browser"]);
+    assert.deepEqual(parsed.moreActions.map((a) => a.id), ["sequencer"]);
+    assert.deepEqual(parsed.targetsById.get("data-browser"), {
+      kind: "web",
+      url: "https://example.local/db",
+    });
+  } finally {
+    rmSync(t.root, { recursive: true, force: true });
+  }
+});
+
+test("a host overrides the zone's launcher settings", () => {
+  const t = tree({
+    "zone/TESTZ.yaml": "launcher:\n  appName: Zone name\nlabview-dev:\n",
+    "host/TESTZ-Deploy.yaml": `${REAL_HOST}launcher:\n  appName: Host name\n`,
+  });
+  try {
+    const parsed = loadConfigFromFile(t.configPath, {
+      appRoot: t.appRoot,
+      configDir: t.configDir,
+      overlay: resolve(t).overlay,
+    });
+    assert.equal(parsed.appName, "Host name");
+  } finally {
+    rmSync(t.root, { recursive: true, force: true });
+  }
+});
+
+test("action lists REPLACE the root file's rather than appending to it", () => {
+  const t = tree(
+    {
+      "zone/TESTZ.yaml":
+        "launcher:\n  quickActions:\n    - id: from-zone\n      label: From zone\n" +
+        "      target: { kind: web, url: 'https://example.local/z' }\nlabview-dev:\n",
+    },
+    "appName: L4\nentries: []\nquickActions:\n  - id: from-file\n    label: From file\n" +
+      "    target: { kind: web, url: 'https://example.local/f' }\n",
+  );
+  try {
+    const parsed = loadConfigFromFile(t.configPath, {
+      appRoot: t.appRoot,
+      configDir: t.configDir,
+      overlay: resolve(t).overlay,
+    });
+    assert.deepEqual(parsed.quickActions.map((a) => a.id), ["from-zone"]);
+  } finally {
+    rmSync(t.root, { recursive: true, force: true });
+  }
+});
+
+test("when the repo sets no launcher block the root file still decides", () => {
+  const t = tree(
+    {},
+    "appName: Root name\nentries: []\nquickActions:\n  - id: from-file\n    label: From file\n" +
+      "    target: { kind: web, url: 'https://example.local/f' }\n",
+  );
+  try {
+    const parsed = loadConfigFromFile(t.configPath, {
+      appRoot: t.appRoot,
+      configDir: t.configDir,
+      overlay: resolve(t).overlay,
+    });
+    assert.equal(parsed.appName, "Root name");
+    assert.deepEqual(parsed.quickActions.map((a) => a.id), ["from-file"]);
+  } finally {
+    rmSync(t.root, { recursive: true, force: true });
+  }
+});
+
+test("a `launcher:` block is not mistaken for an HMI group", () => {
+  const t = tree({ "zone/TESTZ.yaml": "launcher:\n  appName: X\nlabview-dev:\n" });
+  try {
+    const result = resolve(t);
+    assert.deepEqual(result.warnings, []);
+    assert.equal(result.provenance.entryCount, 0);
+  } finally {
+    rmSync(t.root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Feeding the launcher's existing config model (FR6)
 // ---------------------------------------------------------------------------
 
@@ -246,9 +350,10 @@ test("host machine values reach context.local, including the derived Phoebus exe
     // Derived from installRoot because no explicit executable was configured.
     assert.match(local.phoebus.executable ?? "", /phoebus\.(bat|sh)$/);
     assert.equal(local.hosts["hmi-server"], "testz-deploy20:8082");
-    // `hmi-server` must NOT become an hmiApi baseUrl: it has no scheme and
-    // hmi-api.ts refuses a non-loopback, non-HTTPS URL.
-    assert.equal(local.hmiApi.baseUrl, undefined);
+    // `hmi-server` becomes a usable lifecycle base URL, with the plain-HTTP
+    // opt-in recorded explicitly rather than silently.
+    assert.equal(local.hmiApi.baseUrl, "http://testz-deploy20:8082/api/lifecycle/v1");
+    assert.equal(local.hmiApi.allowInsecureTransport, true);
   } finally {
     rmSync(t.root, { recursive: true, force: true });
   }

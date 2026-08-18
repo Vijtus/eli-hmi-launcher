@@ -10,5 +10,6 @@ dist/
 .local/native-ioc-root/
 .local/xdotool/
 .local/acceptance/
+.local/demo-captures/
 __pycache__/
 .pytest_cache/
