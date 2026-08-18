@@ -52,6 +52,40 @@ If no usable cache exists, that source is skipped, the warning is logged, and
 the launcher still opens with the remaining sources. `quickActions` and
 `moreActions` stay in the root config and are not imported from catalog files.
 
+## Git config repo overlay
+
+When `ELI_LAUNCHER_CONFIG_REPO_URL` is set, the launcher resolves a host file and
+a zone file from a git repository and layers them onto this schema before
+validation. See README.md > Git-backed configuration for the repo layout, the
+environment variables, and the resolution order. In schema terms:
+
+| Config repo input | Lands in |
+|---|---|
+| host `zone:` | `local.zoneSymbol` |
+| host `P4-workspace:` | `local.workspaceRoot` |
+| host `css-gui:` | `local.cssGuiRoot` |
+| host `css-install:` | `local.phoebus.installRoot` |
+| host `hmi-server:` | `local.hosts."hmi-server"` |
+| host / zone `local:` | merged into `local:` verbatim |
+| zone `labview-dev:` etc. | `entries:`, as a catalog source named `zone:<ZONE>` |
+
+Precedence is zone file, then host file, then the host file's own `local:` block;
+all of them override `local:` in this file. Mappings merge key by key, scalars and
+lists replace wholesale, and `null` never overrides.
+
+Zone entries are injected as an ordinary catalog source appended after any
+declared `catalog.sources`, so the "later source wins" rule below applies to them
+unchanged, and an unreachable repo marks them `cached`/`stale` exactly like an
+unreachable filesystem catalog.
+
+`security:` and `access:` are **never** taken from the config repo. This file
+remains the trust root that decides which commands may be spawned; a repository
+that can be pushed to must not be able to relax `security.allowedCommandRoots`.
+
+`hmi-server` is intentionally not mapped to `local.hmiApi.baseUrl`: the observed
+value has no URL scheme, and a non-loopback `baseUrl` must be HTTPS and carry
+`authTokenEnv`, so mapping it would make every host config fail validation.
+
 ## Local machine settings
 
 `local:` contains values that differ by workstation. The block, and every key
@@ -63,6 +97,7 @@ local:
   cssGuiRoot: 'C:\ELI\CSS_GUIs'
   zoneSymbol: L4
   phoebus:
+    installRoot: 'C:\Phoebus' # optional; the install DIRECTORY
     executable: 'C:\Phoebus\phoebus.bat'
     serverPort: 4918
     settingsFile: 'C:\ELI\CSS_GUIs\settings.properties' # optional
@@ -80,6 +115,14 @@ local:
   monitoring:
     reconcileIntervalMs: 5000 # optional; default 5000
 ```
+
+`local.phoebus.installRoot` is the Phoebus install DIRECTORY, whereas
+`local.phoebus.executable` is a FILE. It exists because the git config repo's
+`css-install` key names a directory (`C:\CSS Phoebus\product-5.0.2`). When
+`executable` is absent it is derived as `<installRoot>/phoebus.bat` on Windows and
+`<installRoot>/phoebus.sh` elsewhere; an explicit `executable` always wins. The
+launcher-script filename is an assumption about the site Phoebus distribution and
+is listed in `BLOCKERS.md` for confirmation.
 
 The example values above illustrate shape only; deployed values must come from
 the control-system maintainers. `local.phoebus.serverPort`, when present, must

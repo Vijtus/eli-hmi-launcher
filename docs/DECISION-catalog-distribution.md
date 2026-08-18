@@ -18,6 +18,26 @@ launcher still opens.
 | Versioned catalog distributed to local disk by configuration management | Reviewable history, deterministic rollback, no runtime share dependency, and consistent local startup. Requires an existing deployment agent/process. | A failed deployment leaves the prior local version; deployment monitoring must detect lag. |
 | HTTP catalog service | Central governance and telemetry, but introduces an API, authentication, TLS/certificate handling, retries, and another service to operate. The current filesystem loader does not implement this option. | Service outage requires the same cache semantics plus an API contract. |
 
+## Outcome (2026-08)
+
+A fifth option was implemented: **a versioned git configuration repository
+(`eli-eric/eli-hmi-config`) cloned by the launcher at startup**, selected by
+hostname into `launcher/host/` and `launcher/zone/`. It keeps the reviewable
+history and deterministic rollback of the configuration-management option without
+requiring a deployment agent, and reuses the cache-and-degrade semantics already
+built for filesystem sources: an unreachable git server starts the launcher on the
+last-known-good commit and reports `CATALOG STALE` with the commit SHA and fetch
+timestamp.
+
+It is opt-in per machine via `ELI_LAUNCHER_CONFIG_REPO_URL`; machines without it
+keep using local and filesystem sources unchanged. See README.md > Git-backed
+configuration, and BLK-006.
+
+The trade-off accepted: startup now depends on git-server reachability for
+*freshness* (never for *starting*), and the config repo becomes an artefact whose
+write access must be controlled — which is why `security:` is deliberately not
+overlayable from it.
+
 ## Recommendation
 
 Use a versioned catalog distributed to a fixed local path by the site's existing
