@@ -119,14 +119,32 @@ test("css items map onto the phoebus target and default to the CSS platform", ()
   assert.equal(entries[0]?.["platform"], "CSS");
 });
 
-test("a css item may open an app or restore a layout instead of a resource", () => {
-  const { entries } = adapt("css:\n  - name: Alarms\n    app: alarm_tree\n  - name: Layout\n    layout: true\n");
-  assert.deepEqual(entries[0]?.["target"], { kind: "phoebus", app: "alarm_tree" });
-  assert.deepEqual(entries[1]?.["target"], { kind: "phoebus", layout: true });
+test("a css item may name the Phoebus app that opens its resource", () => {
+  const { entries } = adapt("css:\n  - name: Alarms\n    resource: alarms.bob\n    app: alarm_tree\n");
+  assert.deepEqual(entries[0]?.["target"], { kind: "phoebus", resource: "alarms.bob", app: "alarm_tree" });
+});
+
+test("a css item may restore a saved layout instead of a resource", () => {
+  const { entries } = adapt("css:\n  - name: Layout\n    layout: true\n");
+  assert.deepEqual(entries[0]?.["target"], { kind: "phoebus", layout: true });
 });
 
 test("a css item with nothing to open is rejected with a remedy", () => {
-  assert.throws(() => adapt("css:\n  - name: Empty\n"), /must set at least one of `resource`, `app`, or `layout`/);
+  assert.throws(() => adapt("css:\n  - name: Empty\n"), /must set `resource` or `layout: true`/);
+});
+
+// The launcher treats `app` as a query parameter applied to a resource, so an
+// app-only entry would load here and fail later; reject it where the message can
+// name the config repo file.
+test("a css item with `app` but no `resource` is rejected in the adapter", () => {
+  assert.throws(
+    () => adapt("css:\n  - name: Alarms\n    app: alarm_tree\n"),
+    (error: Error) => {
+      assert.match(error.message, /sets `app` without `resource`/);
+      assert.match(error.message, /Remedy: add `resource:`, or drop `app` and use `layout: true`/);
+      return true;
+    },
+  );
 });
 
 test("web items map onto the web target", () => {

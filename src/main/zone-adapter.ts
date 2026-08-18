@@ -160,9 +160,19 @@ function adaptCss(item: RawObject, index: number, filePath: string): RawObject {
   const resource = optional(item, ["resource", "file", "bob"]);
   const app = optional(item, ["app", "application"]);
   const layout = item["layout"] === true || text(item["layout"]).toLowerCase() === "true";
-  if (!resource && !app && !layout) {
+  // `app` is an `app` query parameter applied to a resource, not a standalone
+  // target, so the launcher rejects it without one. Fail here instead, where the
+  // message can name the config repo file and item.
+  if (app && !resource) {
     throw new Error(
-      `${where} must set at least one of \`resource\`, \`app\`, or \`layout\`. ` +
+      `${where} sets \`app\` without \`resource\`. \`app\` selects which Phoebus application opens a ` +
+        `resource, so it cannot be used on its own. ` +
+        `Remedy: add \`resource:\`, or drop \`app\` and use \`layout: true\`.`,
+    );
+  }
+  if (!resource && !layout) {
+    throw new Error(
+      `${where} must set \`resource\` or \`layout: true\`. ` +
         `Remedy: give the Phoebus entry something to open — see CONFIG_SCHEMA.md > Targets > phoebus.`,
     );
   }

@@ -172,7 +172,7 @@ labview-epics:                  # -> target kind: labview-epics
     exe: Vacuum.exe
 css:                            # -> target kind: phoebus
   - name: Cooling Overview
-    resource: cooling.bob       # or `app:`, or `layout: true`
+    resource: cooling.bob       # or `layout: true`; `app:` refines a resource
 web:                            # -> target kind: web
   - name: Operator Logbook
     url: https://logbook.example.org
