@@ -8,8 +8,10 @@ import type { LaunchTarget } from "../shared/types";
 
 let logFilePath = "";
 let warnedOnce = false;
-const REDACTED = "[REDACTED]";
-const SENSITIVE_NAME = /(?:^|[-_])(password|passwd|token|secret|api[-_]?key|authorization|credential|auth)(?:$|[-_])/i;
+export const REDACTED = "[REDACTED]";
+// Shared with effective-config.ts so the troubleshooting dump redacts exactly
+// what the launch log redacts.
+export const SENSITIVE_NAME = /(?:^|[-_])(password|passwd|token|secret|api[-_]?key|authorization|credential|auth)(?:$|[-_])/i;
 
 export function initLogger(filePath: string): void {
   logFilePath = filePath;
@@ -157,6 +159,6 @@ export function logLaunch(input: LaunchLogInput): void {
   });
 }
 
-export function logEvent(level: "info" | "warn" | "error", message: string, extra: Record<string, unknown> = {}): void {
+export function logEvent(level: "debug" | "info" | "warn" | "error", message: string, extra: Record<string, unknown> = {}): void {
   write({ type: "event", level, message, ...extra });
 }

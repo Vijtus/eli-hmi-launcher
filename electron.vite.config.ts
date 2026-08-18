@@ -4,7 +4,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        external: ["yaml"],
+        external: ["yaml", "isomorphic-git", "isomorphic-git/http/node"],
       },
     },
   },

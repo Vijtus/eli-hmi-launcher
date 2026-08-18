@@ -9,6 +9,10 @@ import {
   type ParsedConfig,
 } from "./config";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
+import { defaultDeps } from "./config-repo";
+import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "./dynamic-config";
+import { redactError } from "./config-repo-auth";
+import { buildEffectiveConfig } from "./effective-config";
 import { attachLaunchDiagnostics, diagnosticsFromError } from "./launch-diagnostics";
 import {
   assertFolderPathUsable,
@@ -495,16 +499,42 @@ function registerIpcHandlers(): void {
 // Bootstrap.
 // ---------------------------------------------------------------------------
 
+// FR1-FR5 — fetch the git configuration repo and resolve this machine's host and
+// zone documents. Returns undefined when the feature is switched off, in which
+// case the launcher's behaviour is unchanged from before this feature.
+//
+// Nothing here mutates launcher state: the result is handed to the config loader
+// as an overlay, and `loaded` is only assigned once a complete, validated
+// ParsedConfig exists. A failure at any step therefore lands in the same error
+// window as any other config failure, never a half-configured launcher.
+async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
+  const options = readDynamicConfigEnv(process.env, {
+    cacheDir: path.join(app.getPath("userData"), "config-repo"),
+  });
+  if (!options) {
+    return undefined;
+  }
+  try {
+    return await resolveDynamicConfig(options, await defaultDeps());
+  } catch (error) {
+    // Redact before the message can reach a log line or the error window.
+    throw new Error(redactError(error, options.token));
+  }
+}
+
 async function bootstrap(): Promise<void> {
   initLogger(path.join(app.getPath("logs"), "launcher.log.jsonl"));
 
   let configPath: string | undefined;
+  let gitConfig: DynamicConfigResult | undefined;
   try {
+    gitConfig = await resolveGitConfig();
     configPath = await resolveConfigPath();
     loaded = loadConfigFromFile(configPath, {
       appRoot: app.getAppPath(),
       configDir: path.dirname(configPath),
       catalogCacheDir: path.join(app.getPath("userData"), "catalog-cache"),
+      ...(gitConfig ? { overlay: gitConfig.overlay } : {}),
     });
     hmiApi = createHmiApiAdapter(loaded.context.local.hmiApi);
   } catch (error) {
@@ -525,6 +555,29 @@ async function bootstrap(): Promise<void> {
     logFile: getLogFilePath(),
     catalogStale: loaded.catalogStatus.stale,
   });
+
+  // NFR8 — everything an operator needs to answer "which config is this?".
+  if (gitConfig) {
+    const provenance = gitConfig.provenance;
+    logEvent(provenance.source === "cached" ? "warn" : "info", "Config repo resolved", {
+      ...provenance,
+      // The URL may embed userinfo if an operator pasted credentials into it.
+      url: redactError(provenance.url, process.env[ "ELI_LAUNCHER_CONFIG_REPO_TOKEN" ]),
+    });
+    if (provenance.source === "cached") {
+      logEvent(
+        "warn",
+        `Launcher started on a CACHED config repo commit ${provenance.commitSha} fetched at ` +
+          `${provenance.fetchedAt}; the remote could not be reached.`,
+      );
+    }
+    for (const warning of gitConfig.warnings) {
+      logEvent("warn", "Config repo warning", { warning });
+    }
+    logEvent("debug", "Effective configuration resolved", {
+      effectiveConfig: buildEffectiveConfig(loaded, gitConfig.provenance),
+    });
+  }
 
   for (const warning of loaded.catalogStatus.warnings) {
     logEvent("warn", "Catalog source warning", { warning });
