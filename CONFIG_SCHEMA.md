@@ -52,6 +52,48 @@ If no usable cache exists, that source is skipped, the warning is logged, and
 the launcher still opens with the remaining sources. `quickActions` and
 `moreActions` stay in the root config and are not imported from catalog files.
 
+## Git config repo overlay
+
+When `ELI_LAUNCHER_CONFIG_REPO_URL` is set, the launcher resolves a host file and
+a zone file from a git repository and layers them onto this schema before
+validation. See README.md > Git-backed configuration for the repo layout, the
+environment variables, and the resolution order. In schema terms:
+
+| Config repo input | Lands in |
+|---|---|
+| host `zone:` | `local.zoneSymbol` |
+| host `P4-workspace:` | `local.workspaceRoot` |
+| host `css-gui:` | `local.cssGuiRoot` |
+| host `css-install:` | `local.phoebus.installRoot` |
+| host `hmi-server:` | `local.hmiApi.baseUrl` (+ `local.hosts."hmi-server"`) |
+| host / zone `local:` | merged into `local:` verbatim |
+| host / zone `launcher:` | `appName`, `quickActions`, `moreActions` (replaces the root file's) |
+| zone `labview-dev:` etc. | `entries:`, as a catalog source named `zone:<ZONE>` |
+
+Precedence is zone file, then host file, then the host file's own `local:` block;
+all of them override `local:` in this file. Mappings merge key by key, scalars and
+lists replace wholesale, and `null` never overrides.
+
+Zone entries are injected as an ordinary catalog source appended after any
+declared `catalog.sources`, so the "later source wins" rule below applies to them
+unchanged, and an unreachable repo marks them `cached`/`stale` exactly like an
+unreachable filesystem catalog.
+
+`appName`, `quickActions` and `moreActions` may be set from a `launcher:` block in
+the zone or host document; the host wins, and a present value REPLACES the root
+file's rather than merging with it. Omitting the block leaves the root file in
+charge.
+
+`security:` and `access:` are **never** taken from the config repo. This file
+remains the trust root that decides which commands may be spawned; a repository
+that can be pushed to must not be able to relax `security.allowedCommandRoots`.
+
+`hmi-server` becomes the lifecycle API base URL. A bare `host:port` yields
+`http://host:port/api/lifecycle/v1` plus `allowInsecureTransport: true`; a value
+that already carries a scheme is used as written and keeps the strict rules; a
+value that already carries a path is used verbatim. See README.md > How
+`css-install` and `hmi-server` are interpreted.
+
 ## Local machine settings
 
 `local:` contains values that differ by workstation. The block, and every key
@@ -63,6 +105,7 @@ local:
   cssGuiRoot: 'C:\ELI\CSS_GUIs'
   zoneSymbol: L4
   phoebus:
+    installRoot: 'C:\Phoebus' # optional; the install DIRECTORY
     executable: 'C:\Phoebus\phoebus.bat'
     serverPort: 4918
     settingsFile: 'C:\ELI\CSS_GUIs\settings.properties' # optional
@@ -80,6 +123,22 @@ local:
   monitoring:
     reconcileIntervalMs: 5000 # optional; default 5000
 ```
+
+`local.phoebus.installRoot` is the Phoebus install DIRECTORY, whereas
+`local.phoebus.executable` is a FILE. It exists because the git config repo's
+`css-install` key names a directory (`C:\CSS Phoebus\product-5.0.2`). When
+`executable` is absent, the install root is PROBED for `phoebus.bat`, then
+`phoebus.sh`, then `phoebus`, and the first that exists is used. When none exist —
+the normal case when validating a Windows deployment from a POSIX workstation —
+the platform default is used so the config still loads and the missing path is
+reported by the ordinary existence check at launch. An explicit `executable`
+always wins.
+
+`local.hmiApi.allowInsecureTransport` permits a lifecycle API reached over plain
+HTTP on a non-loopback host. It is set automatically when the config repo's
+`hmi-server` key gives a bare `host:port`. It never permits a credential in
+cleartext: `authTokenEnv` combined with a plain-HTTP non-loopback `baseUrl` is
+refused outright. Set it to `false` to restore the strict HTTPS requirement.
 
 The example values above illustrate shape only; deployed values must come from
 the control-system maintainers. `local.phoebus.serverPort`, when present, must

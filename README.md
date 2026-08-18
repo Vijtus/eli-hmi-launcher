@@ -118,6 +118,317 @@ dir — each for `config/launcher.yaml`.
 
 ---
 
+## Git-backed configuration (config repo)
+
+The launcher can take its machine and zone configuration from a git repository
+instead of hand-maintained local files. On startup it clones or updates that repo,
+picks the file matching its own hostname, follows the `zone:` key in that file to
+the matching zone file, and folds both into the config model.
+
+**The feature is off unless `ELI_LAUNCHER_CONFIG_REPO_URL` is set.** With it unset
+the launcher behaves exactly as it did before, so this can be rolled out one
+machine at a time.
+
+The launcher is **read-only** against the config repo. It never commits, pushes,
+or writes to the remote.
+
+### Repo layout
+
+```
+<repo-root>/
+└── launcher/                     # ELI_LAUNCHER_CONFIG_REPO_SUBPATH, default "launcher"
+    ├── host/                     # one file per machine
+    │   ├── TESTZ-Deploy.yaml
+    │   └── L4-Operator-01.yaml
+    └── zone/                     # one file per zone
+        ├── TESTZ.yaml
+        └── L4.yaml
+```
+
+A host file carries this machine's paths, the lifecycle server address, and the
+name of the zone it belongs to:
+
+```yaml
+zone: TESTZ                                   # -> local.zoneSymbol, and selects zone/TESTZ.yaml
+P4-workspace: D:\Workspaces\Perforce\TESTZ_dev  # -> local.workspaceRoot
+css-gui: D:\Workspaces\css-gui                # -> local.cssGuiRoot
+css-install: C:\CSS Phoebus\product-5.0.2     # -> local.phoebus.installRoot
+hmi-server: testz-deploy20:8082               # -> local.hmiApi.baseUrl (+ local.hosts)
+local:                                        # optional: any native launcher setting
+  phoebus:
+    serverPort: 4918
+```
+
+A zone file carries the launchable HMIs, grouped by platform:
+
+```yaml
+labview-dev:                    # -> target kind: labview-dev
+  - ioc-name: Camera Manager
+    host: RMC00-001             # also shown in the launcher's RMC column
+    ioc-type: Camera Manager
+    exe: CMD.exe
+labview-epics:                  # -> target kind: labview-epics
+  - gui-name: Vacuum Overview
+    gui-type: Vacuum
+    exe: Vacuum.exe
+css:                            # -> target kind: phoebus
+  - name: Cooling Overview
+    resource: cooling.bob       # or `layout: true`; `app:` refines a resource
+web:                            # -> target kind: web
+  - name: Operator Logbook
+    url: https://logbook.example.org
+zone: TESTZ                     # optional metadata, not an HMI group
+local: {}                       # optional zone-wide defaults, overridden by the host file
+launcher:                       # optional launcher chrome owned by the zone
+  appName: L4 Launcher — TESTZ
+  quickActions: [...]           # replaces the root file's, never appends
+  moreActions: [...]
+```
+
+An empty group (`css:` with nothing after it) is valid. Optional per-item
+`id`, `technology`, `section`, `note`, and `platform` keys override the defaults.
+Entry ids are generated deterministically (`labview-dev-<ioc-name>-<host>`), so
+one IOC name may appear on several hosts without colliding.
+
+Required keys per group: `labview-dev` needs `ioc-name`, `host`, `ioc-type`,
+`exe`; `labview-epics` needs `gui-name`, `gui-type`, `exe`; `css` needs `name`
+plus either `resource` or `layout: true` (`app` refines a resource and cannot be
+used alone); `web` needs `name` and `url`. A missing key fails the load naming the
+file, the group, the item position, and the remedy.
+
+### Environment variables
+
+| Name | Purpose | Required | Default | Example |
+|---|---|---|---|---|
+| `ELI_LAUNCHER_CONFIG_REPO_URL` | HTTPS URL of the config repo. **Unset = feature off.** | To enable | *(unset)* | `https://github.com/eli-eric/eli-hmi-config.git` |
+| `ELI_LAUNCHER_CONFIG_REPO_TOKEN` | HTTPS credential. Unset ⇒ anonymous clone is attempted. | For a private repo | *(unset)* | `ghp_…` |
+| `ELI_LAUNCHER_CONFIG_REPO_USERNAME` | Username half of the credential. Needed for GitLab deploy tokens; leave unset for GitHub. | No | *(unset)* | `eli-launcher-deploy` |
+| `ELI_LAUNCHER_CONFIG_REPO_REF` | Branch, tag, or commit SHA to pin to. | No | remote default branch | `main`, `v1.4.0`, `f40748b…` |
+| `ELI_LAUNCHER_CONFIG_REPO_SUBPATH` | Directory inside the repo holding `host/` and `zone/`. | No | `launcher` | `launcher` |
+| `ELI_LAUNCHER_CONFIG_CACHE_DIR` | Where the checkout is cached. | No | `<userData>/config-repo`; `<tmp>/eli-hmi-launcher-config-repo` for CLI tools | `C:\ProgramData\ELI\config-repo` |
+| `ELI_LAUNCHER_CONFIG_HOSTNAME` | Override the machine identity (VMs, containers, testing). | No | OS hostname | `TESTZ-Deploy` |
+| `ELI_LAUNCHER_CONFIG_FETCH_TIMEOUT_MS` | Network budget per attempt. | No | `10000` | `20000` |
+| `ELI_LAUNCHER_CONFIG_OFFLINE` | Skip the network; use the cache only. | No | `0` | `1` |
+
+`ELI_LAUNCHER_CONFIG` (the existing local config path) is unchanged and still
+required — see *Precedence* below.
+
+### Credentials for a private config repo
+
+The configuration repository is **private by design** — it describes real
+machines and real control-room paths. A token is therefore the normal deployment,
+not an edge case. Token auth over HTTPS is not subject to interactive 2FA on any
+of these forges: the token *is* the second factor, so an unattended control-room
+machine never sees a prompt.
+
+| Forge | What to create | `…_USERNAME` | `…_TOKEN` |
+|---|---|---|---|
+| GitHub | Fine-grained PAT, or a classic PAT with `repo` | leave unset | the token |
+| GitLab | **Deploy token** (read_repository) — the recommended one: scoped to this repo, no user attached | the deploy token's username | the token |
+| GitLab | Project/personal access token (`read_repository`) | `oauth2` | the token |
+| Gitea / Forgejo | Access token with read scope | leave unset | the token |
+| Bitbucket | App password (Repositories: Read) | the account name | the app password |
+
+Grant **read-only** access. The launcher never writes to the config repo.
+
+If both variables are unset the launcher attempts an anonymous clone, which is
+what a public mirror or an internal unauthenticated host needs.
+
+### Resolution order
+
+```
+1. obtain the repo      cache absent  -> clone --depth 1 --single-branch <ref>
+                        cache present -> fetch + checkout --force <ref>
+                        git error     -> discard cache, re-clone once
+                        network error -> use cache (STALE) or fail if none
+
+2. find the host file   <subpath>/host/, case-insensitive scan
+                        try FQDN            e.g. testz-deploy.eli.example.cz
+                        then short name     e.g. testz-deploy
+                        no match            -> HARD FAIL, naming what exists
+
+3. find the zone file   read `zone:` from the host file (required)
+                        <subpath>/zone/, case-insensitive scan
+                        no match            -> HARD FAIL, listing available zones
+
+4. merge                zone `local:`   (base)
+                        host kebab keys (override)
+                        host `local:`   (override, wins)
+
+5. apply                merged values  -> the launcher's `local:` model
+                        zone HMI groups -> entries, as a catalog source
+```
+
+Names are matched **case-insensitively** so the same repo resolves identically on
+Windows and Linux — `TESTZ-Deploy.yaml` matches a hostname of `testz-deploy`. Two
+files whose names differ only by case are rejected as ambiguous.
+
+### How `css-install` and `hmi-server` are interpreted
+
+**`css-install`** is a Phoebus install *directory*, while `local.phoebus.executable`
+is a *file*. The launcher probes the directory for `phoebus.bat`, then
+`phoebus.sh`, then `phoebus`, and uses the first that exists. If none exist — the
+normal case when checking a Windows deployment from a POSIX workstation — it falls
+back to the platform default so the config still loads, and the missing path is
+reported by the ordinary existence check at launch. An explicit
+`local.phoebus.executable` always wins.
+
+**`hmi-server`** becomes the lifecycle API base URL:
+
+| Value in the host file | Resulting `local.hmiApi.baseUrl` | Transport |
+|---|---|---|
+| `testz-deploy20:8082` | `http://testz-deploy20:8082/api/lifecycle/v1` | plain HTTP, opt-in recorded |
+| `https://hmi.example.org` | `https://hmi.example.org/api/lifecycle/v1` | strict |
+| `https://hmi.example.org/lifecycle/v2` | used verbatim | strict |
+
+A value with no scheme reads as the author asserting a trusted site LAN, so the
+launcher accepts plain HTTP for it and records
+`local.hmiApi.allowInsecureTransport: true` — visible in `dump-config` and logged
+at startup, never silent. Two guards keep that honest:
+
+- **A token is refused over plain HTTP to a non-loopback host**, opt-in or not. A
+  bearer credential must never leave the machine in cleartext.
+- Setting `local.hmiApi.allowInsecureTransport: false` in the host file or the
+  root config restores the strict rule, after which a scheme-less `hmi-server`
+  fails with an error telling you to write an `https://` URL.
+
+The raw value also stays available as `${local.hosts.hmi-server}`.
+
+### Merge rules
+
+- Mappings merge **key by key, recursively**.
+- Scalars replace.
+- **Lists replace wholesale — they never concatenate.** A zone list is a complete
+  catalogue, so appending would make removal from a host file impossible.
+- A key that is absent or explicitly `null` does **not** override. Use an empty
+  list or empty string to clear a value deliberately.
+
+### Precedence
+
+| Setting | Winner |
+|---|---|
+| `local:` machine values | **config repo** (host file beats zone file beats `config/launcher.yaml`) |
+| `entries:` | **config repo** zone file beats inline entries and filesystem catalogs |
+| `appName`, `quickActions`, `moreActions` | **config repo** `launcher:` block (host beats zone) when present, else `config/launcher.yaml` |
+| `security:`, `access:` | **local `config/launcher.yaml` only — never the config repo** |
+
+`security:` is intentionally not overlayable. The config file is a trust root that
+decides which commands may be spawned; letting a pushable repo relax
+`allowedCommandRoots` would turn write access to that repo into code execution on
+every workstation. This is why `config/launcher.yaml` is still required.
+
+### Failure modes
+
+| Situation | Launcher behaviour | Operator-visible signal |
+|---|---|---|
+| Repo reachable, everything resolves | Starts normally | `Config repo resolved` log, `source: fresh` |
+| Network down, cache present | **Starts on the cached commit** | `CATALOG STALE` badge; warn log with commit SHA + fetch timestamp |
+| Network down, no cache, no local config | Refuses to start | Config error window naming the URL, cache path, and remedy |
+| Local cache corrupted | Discards it and re-clones once | Warning log; starts normally |
+| Hostname has no host file | Refuses to start | Error naming hostname tried, files present, and the remedy |
+| Host file has no `zone:` key | Refuses to start | Error naming the file and the missing key |
+| `zone:` names a missing zone file | Refuses to start | Error listing available zones |
+| Malformed YAML / missing required key | Refuses to start | Error naming file, key, and remedy |
+| Bad ref (branch/tag/SHA) | Refuses to start (no retry) | Error naming `ELI_LAUNCHER_CONFIG_REPO_REF` |
+| Remote hangs | Abandoned after the timeout | Falls back to cache, or the error above |
+
+Startup cost is bounded: one 10 s attempt plus one retry (500 ms backoff), so the
+worst case is about **20.5 s** before the launcher either starts on cache or shows
+the error window. It never hangs indefinitely.
+
+### Cache
+
+Default `<userData>/config-repo`, created `0700` (no-op on Windows):
+
+```
+<cache>/repo/              the shallow checkout
+<cache>/fetch-state.json   {url, ref, commitSha, fetchedAt}, written atomically
+```
+
+The cache holds only configuration, never the token.
+
+### Token handling
+
+The token is passed to the git client through an in-memory callback and becomes
+an `Authorization` header for the duration of each request. It is **not** written
+into the remote URL in `.git/config`, **not** passed as a command-line argument
+(no child process is spawned — the git client is pure JavaScript), and **not**
+logged: every error string, including the git client's own, is redacted first.
+
+### Troubleshooting: "the launcher started with stale config"
+
+`CATALOG STALE` in the UI means the config repo could not be refreshed and the
+launcher fell back to the last good commit. Work down this list:
+
+1. **Find the evidence.** Open the launch log (path is printed at startup;
+   `<userData>/logs/launcher.log.jsonl`) and look for `Config repo resolved`.
+   `"source":"cached"` confirms the fallback, and `commitSha` + `fetchedAt` tell
+   you how old the configuration is.
+2. **Check the obvious switch.** Is `ELI_LAUNCHER_CONFIG_OFFLINE` set to `1` on
+   this machine? That forces the cache and skips the network entirely.
+3. **Reproduce it without the UI:**
+   ```sh
+   npm run dump-config
+   ```
+   It prints the same resolution with the reason on stderr, secrets redacted.
+4. **Check reachability** of `ELI_LAUNCHER_CONFIG_REPO_URL` from *this* machine.
+   Proxy, DNS, and firewall rules are the usual causes.
+5. **Check the credential.** An expired or revoked token looks like an auth
+   failure in the warning. If the repo is public, unset the token and retry.
+6. **Check the ref.** A branch or tag deleted upstream fails the fetch; confirm
+   `ELI_LAUNCHER_CONFIG_REPO_REF` still exists.
+7. **Confirm the machine identity.** `Config repo resolved` reports `hostname`
+   and `hostnameSource`. If the machine was renamed, either add the new host file
+   upstream or set `ELI_LAUNCHER_CONFIG_HOSTNAME`.
+8. **Force a clean fetch** as a last resort — delete the cache directory
+   (`cacheDir` in the log) and restart. The launcher will re-clone.
+
+If the launcher refuses to start instead, the error window names the file, the
+key, and the remedy; steps 4–7 apply the same way.
+
+### Seeing it run
+
+```sh
+npm run demo:git-config
+```
+
+Builds a small configuration repository in a temp directory, serves it over the
+real git smart-HTTP protocol behind a **required token**, and starts the launcher
+against it. Every row in the window comes from the repo's zone file; the local
+config file contributes only the security policy. Nothing contacts a remote host.
+
+| Flag | What it shows |
+|---|---|
+| *(none)* | Normal start — rows sourced from the zone file |
+| `--host DEMO-Beamline-02` | Same binary, different machine identity: different zone, different paths, `hmi-server` wired |
+| `--offline` | The git server is killed after the first fetch: cached start with `CATALOG STALE` |
+| `--real` | Against the real private `eli-eric/eli-hmi-config` (uses `ELI_LAUNCHER_CONFIG_REPO_TOKEN`, or `gh auth token`) |
+| `--dump` | No window — prints the resolved effective config |
+| `--headless` | Runs under `xvfb-run` for machines with no display |
+
+The demo prints the resolution (hostname → host file → zone → commit) and a
+token-leak check before the window opens, and refuses to start if the token is
+found anywhere it should not be. Clicking a LabVIEW row launches a real fixture
+process and writes a capture file to `.local/demo-captures/`.
+
+### Migration from local config files
+
+The git path is **opt-in per machine**. Nothing changes until
+`ELI_LAUNCHER_CONFIG_REPO_URL` is set on that machine.
+
+- **Machines not yet migrated** keep using `config/launcher.yaml` exactly as
+  before. That path is **not deprecated**.
+- **Migrated machines** still need `config/launcher.yaml`, because `security:` and
+  `access:` are read only from it — it stays the trust root. Everything else,
+  including `appName` and the quick/more action buttons, can move into the config
+  repo's `launcher:` block.
+- Any `local:` values left in the local file are overridden by the config repo, so
+  they can be pruned after migration rather than before.
+- **Rollback** is unsetting `ELI_LAUNCHER_CONFIG_REPO_URL` and restarting. No
+  cached state has to be cleaned up first.
+
+---
+
 ## How to test the UI
 
 - **Row click** (or focus a row and press **Enter**/**Space**): launches that GUI.

@@ -21,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import YAML from "yaml";
 import type {
+  CatalogSourceState,
   CatalogSourceStatus,
   CatalogStatus,
   LaunchAccessPolicy,
@@ -34,6 +35,7 @@ import type {
   SecurityPolicy,
 } from "../shared/types";
 import { resolveLaunchAccessPolicy } from "./access-policy";
+import { deepMerge } from "./config-merge";
 
 type RawObject = Record<string, unknown>;
 
@@ -72,10 +74,43 @@ export type ParsedConfig = {
   catalogStatus: CatalogStatus;
 };
 
+// Entries contributed by a source outside the root config file (today: the zone
+// document of the git config repo). They are injected as an ordinary catalog
+// source, so duplicate-id precedence, staleness, and the `CATALOG STALE` badge
+// all behave exactly as they do for filesystem catalog sources.
+export type ConfigEntrySource = {
+  id: string;
+  entries: unknown;
+  state?: CatalogSourceState;
+  stale?: boolean;
+  path?: string;
+  loadedAt?: string;
+  message?: string;
+};
+
+// Values layered onto the root config file by the git config repo (FR6).
+//
+// `security:` and `access:` are deliberately NOT part of the overlay. The config
+// file is a trust root: it decides which commands may be spawned. Allowing a
+// pushable remote repository to relax `security.allowedCommandRoots` would turn
+// write access to that repo into code execution on every workstation.
+export type ConfigOverlay = {
+  local?: Record<string, unknown>;
+  entrySources?: ConfigEntrySource[];
+  // Launcher-level settings the config repo may own. Absent means "the root file
+  // decides"; present REPLACES the root file's value, matching the list rule used
+  // everywhere else in the merge.
+  appName?: string | undefined;
+  quickActions?: unknown;
+  moreActions?: unknown;
+  warnings?: string[];
+};
+
 export type ConfigLoadBase = {
   appRoot: string;
   configDir: string;
   catalogCacheDir?: string;
+  overlay?: ConfigOverlay;
 };
 
 export const DEFAULT_APP_NAME = "L4 Launcher";
@@ -314,6 +349,57 @@ function parsePlatformAccessPolicies(value: unknown): Map<string, LaunchAccessPo
   return policies;
 }
 
+// `local.phoebus.installRoot` is the Phoebus INSTALL DIRECTORY, which is what the
+// config repo's `css-install` key carries (e.g. `C:\\CSS Phoebus\\product-5.0.2`).
+// `local.phoebus.executable` is a FILE. An explicit executable always wins; only
+// when it is absent is one derived from the install root.
+//
+// The launcher script name differs between Phoebus distributions, so the install
+// root is PROBED rather than guessed: the first of these that actually exists is
+// used. Only when none of them exist — which is the normal case when validating a
+// Windows config on a POSIX workstation — does it fall back to the platform
+// default, so the config still loads and the missing path is reported by the
+// ordinary existence check at launch instead of at parse time.
+export const PHOEBUS_LAUNCHER_CANDIDATES = ["phoebus.bat", "phoebus.sh", "phoebus"] as const;
+
+export const PHOEBUS_LAUNCHER_BY_PLATFORM: Record<string, string> = {
+  win32: "phoebus.bat",
+  default: "phoebus.sh",
+};
+
+// A Windows-style root is kept Windows-style even on POSIX, so a config authored
+// for a workstation reads back unchanged in `dump-config`.
+function joinInstallRoot(installRoot: string, fileName: string): string {
+  const trimmed = installRoot.replace(/[\\/]+$/, "");
+  const separator = trimmed.includes("\\") && !trimmed.includes("/") ? "\\" : path.sep;
+  return `${trimmed}${separator}${fileName}`;
+}
+
+function resolvePhoebusExecutable(phoebus: RawObject): string | undefined {
+  const explicit = readOptionalText(phoebus["executable"]);
+  if (explicit) {
+    return explicit;
+  }
+  const installRoot = readOptionalText(phoebus["installRoot"]);
+  if (!installRoot) {
+    return undefined;
+  }
+  for (const candidate of PHOEBUS_LAUNCHER_CANDIDATES) {
+    const resolved = joinInstallRoot(installRoot, candidate);
+    try {
+      if (existsSync(resolved)) {
+        return resolved;
+      }
+    } catch {
+      // An unreadable install root is not a parse error; fall through to the
+      // platform default and let the launch-time check report it.
+    }
+  }
+  const fallback =
+    PHOEBUS_LAUNCHER_BY_PLATFORM[os.platform()] ?? PHOEBUS_LAUNCHER_BY_PLATFORM["default"];
+  return joinInstallRoot(installRoot, fallback as string);
+}
+
 function parseLocalMachineConfig(value: unknown): LocalMachineConfig {
   if (value === undefined || value === null) {
     return emptyLocalMachineConfig();
@@ -360,8 +446,11 @@ function parseLocalMachineConfig(value: unknown): LocalMachineConfig {
     ...(readOptionalText(value["cssGuiRoot"]) ? { cssGuiRoot: readOptionalText(value["cssGuiRoot"]) } : {}),
     ...(readOptionalText(value["zoneSymbol"]) ? { zoneSymbol: readOptionalText(value["zoneSymbol"]) } : {}),
     phoebus: {
-      ...(readOptionalText(phoebus["executable"])
-        ? { executable: readOptionalText(phoebus["executable"]) }
+      ...(readOptionalText(phoebus["installRoot"])
+        ? { installRoot: readOptionalText(phoebus["installRoot"]) }
+        : {}),
+      ...(resolvePhoebusExecutable(phoebus)
+        ? { executable: resolvePhoebusExecutable(phoebus) }
         : {}),
       ...(readOptionalPort(phoebus["serverPort"], "local.phoebus.serverPort") !== undefined
         ? { serverPort: readOptionalPort(phoebus["serverPort"], "local.phoebus.serverPort") }
@@ -421,6 +510,15 @@ function parseLocalMachineConfig(value: unknown): LocalMachineConfig {
             heartbeatIntervalMs: readOptionalPositiveInteger(
               hmiApi["heartbeatIntervalMs"],
               "local.hmiApi.heartbeatIntervalMs",
+            ),
+          }
+        : {}),
+      ...(readOptionalBool(hmiApi["allowInsecureTransport"], "local.hmiApi.allowInsecureTransport") !==
+      undefined
+        ? {
+            allowInsecureTransport: readOptionalBool(
+              hmiApi["allowInsecureTransport"],
+              "local.hmiApi.allowInsecureTransport",
             ),
           }
         : {}),
@@ -806,9 +904,8 @@ function assertRowsUniqueWithinSource(rows: ConfiguredRow[], sourceId: string): 
   }
 }
 
-function parseCatalogDocument(text: string, sourceId: string, context: LaunchContext): ConfiguredRow[] {
-  const parsed = parseYamlMapping(text, `Catalog source '${sourceId}'`);
-  const rows = parseRows(parsed["entries"] ?? parsed["rows"]);
+function parseCatalogEntries(value: unknown, sourceId: string, context: LaunchContext): ConfiguredRow[] {
+  const rows = parseRows(value);
   assertRowsUniqueWithinSource(rows, sourceId);
   for (const row of rows) {
     validateTargetReferences(row.target, context, {
@@ -818,6 +915,11 @@ function parseCatalogDocument(text: string, sourceId: string, context: LaunchCon
     });
   }
   return rows;
+}
+
+function parseCatalogDocument(text: string, sourceId: string, context: LaunchContext): ConfiguredRow[] {
+  const parsed = parseYamlMapping(text, `Catalog source '${sourceId}'`);
+  return parseCatalogEntries(parsed["entries"] ?? parsed["rows"], sourceId, context);
 }
 
 function catalogCachePath(cacheDir: string, source: CatalogSourceDeclaration, resolvedPath: string): string {
@@ -1285,8 +1387,18 @@ function validateTargetReferences(target: LaunchTarget, context: LaunchContext, 
 // Top-level parse + validate.
 // ---------------------------------------------------------------------------
 
+// The git config repo's host/zone values override the root file's `local:` block
+// key by key. That direction is deliberate: the whole point of the feature is to
+// stop trusting hand-maintained per-workstation values.
+function mergeLocalOverlay(fileLocal: unknown, overlay: Record<string, unknown> | undefined): unknown {
+  if (!overlay || Object.keys(overlay).length === 0) {
+    return fileLocal;
+  }
+  return deepMerge(isObject(fileLocal) ? fileLocal : {}, overlay);
+}
+
 function createLaunchContext(parsed: RawObject, base: ConfigLoadBase): LaunchContext {
-  const local = parseLocalMachineConfig(parsed["local"]);
+  const local = parseLocalMachineConfig(mergeLocalOverlay(parsed["local"], base.overlay?.local));
   const security = parseSecurityPolicy(parsed["security"], base, local);
   return { appRoot: base.appRoot, configDir: base.configDir, security, local };
 }
@@ -1305,8 +1417,14 @@ function parseConfigObject(
     [{ id: "inline", rows: inlineRows }, ...loadedCatalog.sources],
     warnings,
   );
-  const quickActionsWithTargets = parseActions(parsed["quickActions"], "Quick");
-  const moreActionsWithTargets = parseActions(parsed["moreActions"], "More");
+  const quickActionsWithTargets = parseActions(
+    base.overlay?.quickActions ?? parsed["quickActions"],
+    "Quick",
+  );
+  const moreActionsWithTargets = parseActions(
+    base.overlay?.moreActions ?? parsed["moreActions"],
+    "More",
+  );
   const platformAccessPolicies = parsePlatformAccessPolicies(parsed["access"]);
 
   const targetsById = new Map<string, LaunchTarget>();
@@ -1361,7 +1479,7 @@ function parseConfigObject(
   const sources = [inlineStatus, ...loadedCatalog.statuses];
 
   return {
-    appName: readText(parsed["appName"], DEFAULT_APP_NAME),
+    appName: readText(base.overlay?.appName ?? parsed["appName"], DEFAULT_APP_NAME),
     rows: rowsWithTargets.map(({ target: _t, access: _access, ...row }) => row),
     quickActions: quickActionsWithTargets.map(({ target: _t, access: _access, ...a }) => a),
     moreActions: moreActionsWithTargets.map(({ target: _t, access: _access, ...a }) => a),
@@ -1377,12 +1495,46 @@ function parseConfigObject(
   };
 }
 
+// Overlay entry sources are appended AFTER the file's own catalog sources, so
+// the existing "later source wins" precedence (see mergeCatalogRows) makes the
+// git config repo authoritative over both inline entries and local catalogs.
+function appendOverlaySources(
+  loadedCatalog: LoadedCatalog,
+  overlay: ConfigOverlay | undefined,
+  context: LaunchContext,
+): LoadedCatalog {
+  if (!overlay) {
+    return loadedCatalog;
+  }
+  const warnings = [...loadedCatalog.warnings, ...(overlay.warnings ?? [])];
+  const sources = [...loadedCatalog.sources];
+  const statuses = [...loadedCatalog.statuses];
+  for (const source of overlay.entrySources ?? []) {
+    const rows = parseCatalogEntries(source.entries, source.id, context);
+    sources.push({ id: source.id, rows });
+    statuses.push({
+      id: source.id,
+      state: source.state ?? "fresh",
+      stale: source.stale ?? false,
+      entryCount: rows.length,
+      ...(source.path ? { path: source.path } : {}),
+      ...(source.loadedAt ? { loadedAt: source.loadedAt } : {}),
+      ...(source.message ? { message: source.message } : {}),
+    });
+  }
+  return { sources, statuses, warnings };
+}
+
 export function parseConfig(rawYamlText: string, base: ConfigLoadBase): ParsedConfig {
   const parsed = parseYamlMapping(rawYamlText, "Config");
   const context = createLaunchContext(parsed, base);
   const declarations = parseCatalogSourceDeclarations(parsed["catalog"]);
   const cacheDir = base.catalogCacheDir ?? path.join(os.tmpdir(), "eli-hmi-launcher-catalog-cache");
-  const loadedCatalog = loadCatalogSources(declarations, context, cacheDir);
+  const loadedCatalog = appendOverlaySources(
+    loadCatalogSources(declarations, context, cacheDir),
+    base.overlay,
+    context,
+  );
   return parseConfigObject(parsed, base, loadedCatalog);
 }
 

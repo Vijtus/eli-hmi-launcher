@@ -84,6 +84,23 @@ export type CatalogSourceStatus = {
   loadedAt?: string;
 };
 
+// Provenance of the git-backed configuration, surfaced so an operator can tell a
+// fresh start from one running on a cached commit (NFR3/NFR8).
+export type ConfigRepoProvenance = {
+  url: string;
+  ref: string;
+  commitSha: string;
+  fetchedAt: string;
+  source: "fresh" | "cached";
+  cacheDir: string;
+  hostname: string;
+  hostnameSource: "env" | "os";
+  hostFile: string;
+  zone: string;
+  zoneFile: string;
+  entryCount: number;
+};
+
 export type CatalogStatus = {
   stale: boolean;
   sources: CatalogSourceStatus[];
@@ -105,6 +122,10 @@ export type SecurityPolicy = {
 };
 
 export type LocalPhoebusConfig = {
+  // Phoebus install DIRECTORY. When `executable` is absent it is derived from
+  // this plus the platform launcher script name. Fed by the config repo's
+  // `css-install` host key.
+  installRoot?: string;
   executable?: string;
   serverPort?: number;
   settingsFile?: string;
@@ -119,6 +140,11 @@ export type LocalHmiApiConfig = {
   authTokenEnv?: string;
   requestTimeoutMs?: number;
   heartbeatIntervalMs?: number;
+  // Opt-in for a lifecycle API reached over plain HTTP on a trusted site LAN.
+  // Set automatically when the config repo's `hmi-server` key gives a bare
+  // `host:port` with no scheme. It never permits sending a token in cleartext —
+  // HTTP combined with `authTokenEnv` is refused outright.
+  allowInsecureTransport?: boolean;
 };
 
 export type LocalMonitoringConfig = {

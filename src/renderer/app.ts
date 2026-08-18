@@ -263,6 +263,18 @@ function render(): void {
 }
 
 function applyConfig(config: LauncherConfig): void {
+  // `appName` has always been carried to the renderer but never displayed. It is
+  // the visible signal of which configuration this workstation actually loaded,
+  // so a git-supplied zone name shows in the header rather than only in a log.
+  const title = typeof config.appName === "string" ? config.appName.trim() : "";
+  if (title) {
+    const heading = document.getElementById("app-title");
+    if (heading) {
+      heading.textContent = title;
+    }
+    document.title = title;
+  }
+
   state.rows = Array.isArray(config.rows) ? config.rows : [];
   state.quickActions = Array.isArray(config.quickActions) ? config.quickActions : [];
   state.moreActions = Array.isArray(config.moreActions) ? config.moreActions : [];
