@@ -298,7 +298,11 @@ test("a hanging remote is abandoned at the timeout instead of blocking startup",
   const cacheDir = tempCache();
   try {
     const hanging = fakeGit({});
-    hanging.git.clone = () => new Promise(() => undefined); // never settles
+    // Settles well after the deadline rather than never. A promise that never
+    // settles starves the test runner: once the event loop drains with it still
+    // pending, node:test reports "Promise resolution is still pending but the
+    // event loop has already resolved" and cancels every sibling test in the file.
+    hanging.git.clone = () => new Promise((resolve) => setTimeout(resolve, 500));
     const started = Date.now();
     await assert.rejects(
       ensureConfigRepo(
