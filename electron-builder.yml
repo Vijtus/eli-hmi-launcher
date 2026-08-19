@@ -1,0 +1,102 @@
+appId: org.eli-eric.hmi-launcher
+productName: ELI HMI Launcher
+# Keep the executable/package name ASCII and space-free; productName is used for
+# the user-visible app name, this for the binary, the .deb and the AppImage.
+executableName: eli-hmi-launcher
+
+directories:
+  buildResources: build
+  output: release
+
+# The renderer/preload/main bundles plus the manifest. electron-builder adds the
+# production dependencies on top, which matters here: `yaml` and
+# `isomorphic-git` are marked `external` in electron.vite.config.ts, so they are
+# NOT bundled into out/main/index.js and must exist in node_modules at runtime.
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+
+# Shipped OUTSIDE app.asar, beside it in <resources>, because config files
+# reference them as real filesystem paths via ${APP_ROOT} and the launcher spawns
+# them. Anything inside the asar cannot be stat'd or executed.
+# See src/main/app-paths.ts.
+extraResources:
+  - from: config
+    to: config
+  - from: examples
+    to: examples
+
+asar: true
+# No native modules in the dependency tree, so skip the rebuild step entirely.
+npmRebuild: false
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+    - target: zip
+      arch: [x64, arm64]
+
+nsis:
+  # A wizard rather than a silent one-click install, and per-user by default so
+  # an operator without local admin can still install it.
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ELI HMI Launcher
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-${arch}-portable.${ext}
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.utilities
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  # Unsigned builds: see docs/INSTALL.md for the Gatekeeper steps operators need.
+  # To sign later, drop `identity` and supply CSC_LINK / CSC_KEY_PASSWORD — the
+  # entitlements and hardened runtime below are already correct for that.
+  identity: null
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  icon: build/icons
+  category: Science
+  synopsis: Config-driven launcher for L4 control-system GUIs
+  description: >-
+    Desktop launcher for ELI L4 control-system GUIs. Presents a searchable,
+    filterable table built from a YAML catalog and starts LabVIEW, Phoebus/CSS
+    and web HMIs with per-entry access policy enforcement.
+  desktop:
+    entry:
+      Categories: Science;Utility;
+      Keywords: ELI;EPICS;Phoebus;LabVIEW;HMI;launcher;
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64, arm64]
+    - target: rpm
+      arch: [x64, arm64]
+    - target: tar.gz
+      arch: [x64, arm64]
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}

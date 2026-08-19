@@ -13,3 +13,4 @@ dist/
 .local/demo-captures/
 __pycache__/
 .pytest_cache/
+release/
