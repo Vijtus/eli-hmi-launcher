@@ -14,7 +14,7 @@
 // first entry is a process target; pointed at a catalog whose first entry is a
 // web target it will correctly report that nothing was written to the mock log.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +24,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const releaseDir = path.join(repoRoot, "release");
 const debugPort = Number(process.env["ELI_SMOKE_DEBUG_PORT"] ?? 19334);
 const mockLog = path.join(os.tmpdir(), "eli-hmi-launcher-mock.log");
+const WATCHDOG_MS = Number(process.env["ELI_SMOKE_TIMEOUT_MS"] ?? 240_000);
 
 function fail(message) {
   console.error(`\x1b[1;31m[smoke] FAIL:\x1b[0m ${message}`);
@@ -244,10 +245,31 @@ async function main() {
     console.log("\x1b[1;32m[smoke] PASS\x1b[0m — packaged build launches real processes.");
   } finally {
     client?.close();
-    child.kill("SIGTERM");
-    await delay(300);
-    if (child.exitCode === null) child.kill("SIGKILL");
+    stopTree(child);
   }
 }
 
-main().catch((error) => fail(error instanceof Error ? error.message : String(error)));
+// Electron starts helper processes (renderer, GPU, utility). On Windows they
+// survive a kill aimed at the main process and keep the inherited stderr pipe
+// open, which holds this script's event loop open forever. Kill the tree.
+function stopTree(child) {
+  if (child.exitCode !== null || child.pid === undefined) {
+    return;
+  }
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    return;
+  }
+  child.kill("SIGTERM");
+}
+
+// Belt and braces: never let a stuck launch hang a CI job until its timeout.
+const watchdog = setTimeout(
+  () => fail(`Timed out after ${WATCHDOG_MS / 1000}s waiting for the packaged build.`),
+  WATCHDOG_MS,
+);
+watchdog.unref();
+
+main()
+  .then(() => process.exit(0))
+  .catch((error) => fail(error instanceof Error ? error.message : String(error)));
