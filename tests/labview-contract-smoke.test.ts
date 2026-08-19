@@ -40,8 +40,13 @@ test(
   "local LabVIEW contract smoke uses production launch, registry, and policy paths",
   { timeout: 20_000 },
   async (t) => {
-    if (process.platform === "win32") {
-      t.skip("POSIX contract fixture mode is not applicable on Windows");
+    // The fixtures capture their own start identity from /proc/<pid>/stat, and
+    // labview-contract-capture.ts requires that identity to be Linux start
+    // ticks (/^\d+$/). That makes executing them Linux-only, not merely
+    // non-Windows: on macOS the fixture exits 70 because there is no procfs.
+    // src/main/process-inspector.ts makes the same Linux-vs-other-POSIX split.
+    if (process.platform !== "linux") {
+      t.skip(`Contract fixtures need /proc start ticks; not available on ${process.platform}`);
       return;
     }
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "eli-labview-evidence-test-"));

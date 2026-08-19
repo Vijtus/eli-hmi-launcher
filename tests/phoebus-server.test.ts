@@ -47,11 +47,12 @@ entries:
     BASE,
   );
   const target = parsed.targetsById.get("panel") as PhoebusLaunchTarget;
-  const plans = materializePhoebusTarget(target, parsed.context, {
-    id: "panel",
-    kind: "phoebus",
-    group: "entry",
-  });
+  const plans = materializePhoebusTarget(
+    target,
+    parsed.context,
+    { id: "panel", kind: "phoebus", group: "entry" },
+    "linux",
+  );
 
   assert.equal(plans.server.command, "/opt/phoebus/phoebus.sh");
   assert.deepEqual(plans.server.args, ["-server", "4918"]);
@@ -220,10 +221,14 @@ entries:
   const local = materializePhoebusTarget(
     parsed.targetsById.get("local-panel") as PhoebusLaunchTarget,
     parsed.context,
+    undefined,
+    "linux",
   );
   const remote = materializePhoebusTarget(
     parsed.targetsById.get("remote-panel") as PhoebusLaunchTarget,
     parsed.context,
+    undefined,
+    "linux",
   );
   assert.equal(
     local.openResource?.args?.at(-1),
