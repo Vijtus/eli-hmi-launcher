@@ -1073,16 +1073,29 @@ function parseSecurityPolicy(
     local,
   };
 
+  // A root that references a `local.*` setting this machine does not have is
+  // dropped rather than fatal. That lets one allow-list cover both a workstation
+  // with no workspace configured and a deployed machine that has one, and it is
+  // safe in the only direction that matters: dropping a root can only ever
+  // NARROW what may be launched, never widen it.
   const roots = Array.isArray(raw["allowedCommandRoots"])
     ? (raw["allowedCommandRoots"] as unknown[])
         .map((entry) => readText(entry))
         .filter((entry) => entry.length > 0)
-        .map((entry) => {
-          const expanded = expandConfiguredString(entry, ctxForRoots);
+        .flatMap((entry) => {
+          let expanded: string;
+          try {
+            expanded = expandConfiguredString(entry, ctxForRoots);
+          } catch (error) {
+            if (error instanceof MissingLocalSettingError) {
+              return [];
+            }
+            throw error;
+          }
           const abs = path.isAbsolute(expanded) || isWindowsAbsolutePath(expanded)
             ? expanded
             : path.resolve(base.configDir, expanded);
-          return path.normalize(abs);
+          return [path.normalize(abs)];
         })
     : [];
 
@@ -1093,14 +1106,22 @@ function parseSecurityPolicy(
   };
 }
 
-function normalizeForCompare(value: string): string {
-  const normalized = path.normalize(value);
-  return process.platform === "win32" ? normalized.replace(/\//g, "\\").toLowerCase() : normalized;
+// Windows path comparison is case-insensitive and separator-agnostic; POSIX is
+// neither. Platform is a parameter so the Windows rule can be exercised from a
+// POSIX host — a Windows deployment's allow-list is routinely checked from a
+// Linux workstation, and getting the answer wrong there is silent.
+function normalizeForCompare(value: string, platform: NodeJS.Platform = process.platform): string {
+  const normalized = platform === "win32" ? path.win32.normalize(value) : path.normalize(value);
+  return platform === "win32" ? normalized.replace(/\//g, "\\").toLowerCase() : normalized;
 }
 
 // Enforced at LAUNCH time (authoritative, uses the exact command that will be
 // spawned on the current platform). Throws on violation.
-export function assertCommandAllowed(resolvedCommand: string, policy: SecurityPolicy): void {
+export function assertCommandAllowed(
+  resolvedCommand: string,
+  policy: SecurityPolicy,
+  platform: NodeJS.Platform = process.platform,
+): void {
   const hasSeparator = resolvedCommand.includes("/") || resolvedCommand.includes("\\");
 
   if (!hasSeparator) {
@@ -1132,7 +1153,8 @@ export function assertCommandAllowed(resolvedCommand: string, policy: SecurityPo
     candidate = absolute;
   }
 
-  const normalizedCandidate = normalizeForCompare(candidate);
+  const separator = platform === "win32" ? "\\" : path.sep;
+  const normalizedCandidate = normalizeForCompare(candidate, platform);
   const allowed = policy.allowedCommandRoots.some((root) => {
     let rootResolved = root;
     try {
@@ -1142,8 +1164,8 @@ export function assertCommandAllowed(resolvedCommand: string, policy: SecurityPo
     } catch {
       rootResolved = root;
     }
-    const normalizedRoot = normalizeForCompare(rootResolved);
-    const withSep = normalizedRoot.endsWith(path.sep) ? normalizedRoot : normalizedRoot + path.sep;
+    const normalizedRoot = normalizeForCompare(rootResolved, platform);
+    const withSep = normalizedRoot.endsWith(separator) ? normalizedRoot : normalizedRoot + separator;
     return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(withSep);
   });
 

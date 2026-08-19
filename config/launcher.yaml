@@ -24,6 +24,12 @@ appName: L4 Launcher
 security:
   allowedCommandRoots:
     - ${APP_ROOT}/examples/launchers
+    # Present only on a deployed machine, where the catalog comes from the config
+    # repo and points at the Perforce workspace / CSS GUI tree. On a workstation
+    # that has neither, these are dropped and the allow-list simply stays
+    # narrower — a root is never widened by being absent.
+    - ${local.workspaceRoot}
+    - ${local.cssGuiRoot}
   allowBareCommands: true
 
 entries:

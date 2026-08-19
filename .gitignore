@@ -14,3 +14,7 @@ dist/
 __pycache__/
 .pytest_cache/
 release/
+
+# Site catalog snapshot: eli-hmi-config is private, this repo is public.
+config-repo/launcher/
+eli-hmi-config-main.zip

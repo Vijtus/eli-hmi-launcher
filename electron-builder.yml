@@ -26,6 +26,10 @@ extraResources:
     to: config
   - from: examples
     to: examples
+  # A snapshot of eli-eric/eli-hmi-config, so a machine with no route to that
+  # private repo still resolves its real catalog by hostname.
+  - from: config-repo
+    to: config-repo
 
 asar: true
 # No native modules in the dependency tree, so skip the rebuild step entirely.

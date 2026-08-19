@@ -518,9 +518,19 @@ function registerIpcHandlers(): void {
 // as an overlay, and `loaded` is only assigned once a complete, validated
 // ParsedConfig exists. A failure at any step therefore lands in the same error
 // window as any other config failure, never a half-configured launcher.
+// Shipped as extraResources beside app.asar. Used only when no repo URL is
+// configured, so a machine that can reach the real repo always gets the live
+// catalog and this snapshot never shadows it.
+async function bundledConfigRepoDir(): Promise<string | undefined> {
+  const candidate = path.join(resolveAppRoot(currentAppLocation()), "config-repo");
+  return (await pathExists(path.join(candidate, "launcher"))) ? candidate : undefined;
+}
+
 async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
+  const bundled = await bundledConfigRepoDir();
   const options = readDynamicConfigEnv(process.env, {
     cacheDir: path.join(app.getPath("userData"), "config-repo"),
+    ...(bundled ? { localDir: bundled } : {}),
   });
   if (!options) {
     return undefined;
