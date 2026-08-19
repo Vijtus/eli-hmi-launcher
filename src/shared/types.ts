@@ -253,3 +253,9 @@ export type LaunchAccessPolicy = {
   onAlreadyRunning: AlreadyRunningAction;
   onUnknownState: UnknownStateAction;
 };
+
+// Where a portable run is recording its diagnostics. Null when not recording.
+export type FieldReportInfo = {
+  directory: string;
+  reportPath: string;
+};

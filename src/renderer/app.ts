@@ -43,6 +43,7 @@ const statusDismiss = document.getElementById("status-dismiss") as HTMLButtonEle
 const rowsElement = document.getElementById("launcher-rows") as HTMLTableSectionElement;
 const rowCountElement = document.getElementById("row-count") as HTMLParagraphElement;
 const catalogStalenessElement = document.getElementById("catalog-staleness") as HTMLParagraphElement;
+const fieldReportElement = document.getElementById("field-report-banner") as HTMLParagraphElement;
 
 const technologyFilter = createCombobox({
   mount: technologyMount,
@@ -313,6 +314,24 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// Only a portable/recording run has a report location. Optional on the bridge
+// so an older preload cannot break startup.
+async function showFieldReportBanner(): Promise<void> {
+  if (!window.launcherApi?.getFieldReport) {
+    return;
+  }
+  try {
+    const report = await window.launcherApi.getFieldReport();
+    if (!report) {
+      return;
+    }
+    fieldReportElement.textContent = `RECORDING DIAGNOSTICS \u2192 ${report.reportPath}`;
+    fieldReportElement.hidden = false;
+  } catch {
+    // A missing banner must never stop the launcher being usable.
+  }
+}
+
 async function initialize(): Promise<void> {
   try {
     if (
@@ -331,6 +350,7 @@ async function initialize(): Promise<void> {
     setStatus("");
     applyConfig(config);
     applyRuntimeSnapshot(runtime);
+    await showFieldReportBanner();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Config load failed: ${message}`, true);

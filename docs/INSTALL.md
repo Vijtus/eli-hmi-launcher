@@ -122,6 +122,44 @@ See [`CONFIG_SCHEMA.md`](../CONFIG_SCHEMA.md) for the schema and
 
 ---
 
+## Diagnosing a machine (portable build)
+
+The **portable** `.exe` records what it finds. Run it from a USB stick on the
+machine in question and it writes two files **next to itself**, then shows a
+banner in the window pointing at them:
+
+```
+ELI-Launcher-<machine>-<timestamp>-report.md      what works and what does not
+ELI-Launcher-<machine>-<timestamp>-events.jsonl   every launch and event, live
+```
+
+Send **both** files back. The report opens with the line that matters:
+
+```
+**24 of 29 entries would launch on this machine.**
+```
+
+then lists every entry that would not, with the command it resolved to and why:
+
+| Verdict | Meaning |
+|---|---|
+| `NOT ON THIS MACHINE` | Resolved fine, but the program is not installed here |
+| `REFUSED BY SECURITY POLICY` | Present, but outside `security.allowedCommandRoots` |
+| `CONFIG INCOMPLETE` | A required `local.*` value is missing for that entry |
+
+Nothing is launched to produce this — commands are resolved and checked on disk,
+and web targets are **not** contacted, so it puts no traffic on a control
+network.
+
+If the stick is read-only the files go to the Desktop instead, and failing that
+to the per-user data directory. The path in the banner is always the truth.
+
+The installed builds (`setup.exe`, `.deb`, `.rpm`, `.dmg`) do **not** record.
+To force recording anywhere, set `ELI_LAUNCHER_FIELD_REPORT=1`, or
+`ELI_LAUNCHER_FIELD_REPORT_DIR=<folder>` to choose the destination.
+
+---
+
 ## Run from source
 
 Needs **Node 20.19+** and a desktop session. Works identically on all three OSes.

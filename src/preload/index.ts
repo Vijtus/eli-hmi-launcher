@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { LauncherConfig, LaunchResult, RuntimeSnapshot } from "../shared/types";
+import type { FieldReportInfo, LauncherConfig, LaunchResult, RuntimeSnapshot } from "../shared/types";
 
 contextBridge.exposeInMainWorld("launcherApi", {
   getConfig: (): Promise<LauncherConfig> => ipcRenderer.invoke("launcher:get-config"),
@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld("launcherApi", {
     return () => ipcRenderer.removeListener("launcher:runtime-states", handler);
   },
   launchItem: (itemId: string): Promise<LaunchResult> => ipcRenderer.invoke("launcher:launch-item", itemId),
+  getFieldReport: (): Promise<FieldReportInfo | null> => ipcRenderer.invoke("launcher:get-field-report"),
 });

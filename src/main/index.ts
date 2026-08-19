@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { access } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   loadConfigFromFile,
@@ -9,6 +10,14 @@ import {
   type ParsedConfig,
 } from "./config";
 import { buildConfigCandidates, resolveAppRoot, type AppLocation } from "./app-paths";
+import {
+  defaultDesktopDir,
+  renderFieldReport,
+  resolveFieldReportTarget,
+  startFieldEventLog,
+  type FieldReportTarget,
+} from "./field-report";
+import { preflightConfig } from "./preflight";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
 import { defaultDeps } from "./config-repo";
 import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "./dynamic-config";
@@ -51,6 +60,7 @@ import type {
   LaunchAccessMode,
   ProcessLaunchTarget,
   RuntimeSnapshot,
+  FieldReportInfo,
 } from "../shared/types";
 
 const DEFAULT_APP_NAME = "L4 Launcher";
@@ -361,6 +371,14 @@ async function launchTarget(
 
 function registerIpcHandlers(): void {
   ipcMain.handle("launcher:get-config", async (): Promise<LauncherConfig> => publicConfig());
+  // Recording is visible by design: the operator must be able to find the file
+  // to send it back, and a shared control-room machine should never be writing
+  // diagnostics about itself without saying so.
+  ipcMain.handle("launcher:get-field-report", async (): Promise<FieldReportInfo | null> =>
+    fieldReport
+      ? { directory: fieldReport.directory, reportPath: fieldReport.reportPath }
+      : null,
+  );
   ipcMain.handle(
     "launcher:get-runtime-states",
     async (): Promise<RuntimeSnapshot> => runtimeSnapshot(),
@@ -515,7 +533,120 @@ async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
   }
 }
 
+// Set when this run is recording next to a portable executable; surfaced to the
+// renderer so the operator can see where the file is.
+let fieldReport: FieldReportTarget | undefined;
+
+function startFieldReport(): void {
+  fieldReport = resolveFieldReportTarget({
+    env: process.env,
+    hostname: os.hostname(),
+    desktopDir: defaultDesktopDir(app.getPath("home")),
+    userDataDir: app.getPath("userData"),
+    now: new Date(),
+  });
+  if (fieldReport) {
+    // Start the event log before anything else is logged, so the file holds the
+    // whole run including config resolution failures.
+    startFieldEventLog(fieldReport.eventLogPath);
+  }
+}
+
+// Written once, after the catalog is known. A failure here must never stop the
+// launcher: the report is a diagnostic aid, not a precondition for operating.
+async function writeFieldReport(
+  configPath: string | undefined,
+  gitConfig: DynamicConfigResult | undefined,
+  configRepoError: string | undefined,
+): Promise<void> {
+  if (!fieldReport || !loaded) {
+    return;
+  }
+  try {
+    const findings = await preflightConfig(loaded);
+    const provenance = gitConfig?.provenance;
+    const markdown = renderFieldReport({
+      appName: loaded.appName,
+      appVersion: app.getVersion(),
+      hostname: os.hostname(),
+      configHostname: process.env["ELI_LAUNCHER_CONFIG_HOSTNAME"],
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron ?? "unknown",
+      configPath,
+      ...(provenance
+        ? {
+            configRepo: {
+              url: redactError(
+                provenance.url,
+                process.env["ELI_LAUNCHER_CONFIG_REPO_TOKEN"],
+                process.env["ELI_LAUNCHER_CONFIG_REPO_USERNAME"],
+              ),
+              ref: provenance.ref,
+              source: provenance.source,
+              commitSha: provenance.commitSha,
+              fetchedAt: provenance.fetchedAt,
+              zone: provenance.zone,
+              hostFile: provenance.hostFile,
+              zoneFile: provenance.zoneFile,
+              entryCount: provenance.entryCount,
+            },
+          }
+        : {}),
+      configRepoError,
+      catalogStatus: loaded.catalogStatus,
+      findings,
+      target: fieldReport,
+      startedAt: new Date(),
+    });
+    await writeFile(fieldReport.reportPath, markdown, "utf8");
+    const ready = findings.filter((finding) => finding.status === "ready").length;
+    logEvent("info", "Field report written", {
+      reportPath: fieldReport.reportPath,
+      eventLogPath: fieldReport.eventLogPath,
+      origin: fieldReport.origin,
+      entriesReady: ready,
+      entriesTotal: findings.length,
+    });
+  } catch (error) {
+    logEvent("warn", "Field report could not be written", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// The catalog never loaded, so there are no entries to preflight — but the
+// machine identity and the reason it failed are the whole point of the report.
+async function writeStartupFailureReport(
+  configPath: string | undefined,
+  failure: string,
+): Promise<void> {
+  if (!fieldReport) {
+    return;
+  }
+  try {
+    const markdown = renderFieldReport({
+      appName: DEFAULT_APP_NAME,
+      appVersion: app.getVersion(),
+      hostname: os.hostname(),
+      configHostname: process.env["ELI_LAUNCHER_CONFIG_HOSTNAME"],
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron ?? "unknown",
+      configPath,
+      configRepoError: failure,
+      findings: [],
+      target: fieldReport,
+      startedAt: new Date(),
+    });
+    await writeFile(fieldReport.reportPath, markdown, "utf8");
+  } catch {
+    // Nothing further to do: the launcher is already showing the error window.
+  }
+}
+
 async function bootstrap(): Promise<void> {
+  startFieldReport();
   initLogger(path.join(app.getPath("logs"), "launcher.log.jsonl"));
 
   let configPath: string | undefined;
@@ -533,12 +664,17 @@ async function bootstrap(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logEvent("error", "Config load failed", { configPath: configPath ?? null, error: message });
+    // A run that never got a catalog is exactly the run worth reporting, so the
+    // failure is recorded before the error window takes over.
+    await writeStartupFailureReport(configPath, message);
     // Register a minimal IPC surface so a stray renderer request cannot crash,
     // then show the error window and keep the process alive so the user sees it.
     registerIpcHandlers();
     showConfigErrorWindow(message, configPath);
     return;
   }
+
+  await writeFieldReport(configPath, gitConfig, undefined);
 
   logEvent("info", "Config loaded", {
     configPath,

@@ -527,6 +527,25 @@ main.container-fluid {
 }
 
 /* Only launch failures use this region; successful launches remain silent. */
+/* Inverted against the fixed black-and-white palette so "this run is being
+   recorded" cannot be mistaken for ordinary chrome. */
+.field-report-banner {
+  flex: none;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border: 1px solid #ffffff;
+  background: #ffffff;
+  color: #000000;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  word-break: break-all;
+}
+
+.field-report-banner[hidden] {
+  display: none;
+}
+
 .catalog-staleness {
   flex: none;
   margin: 0 0 8px;
