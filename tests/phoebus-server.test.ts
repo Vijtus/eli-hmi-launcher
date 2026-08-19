@@ -230,10 +230,21 @@ entries:
     undefined,
     "linux",
   );
-  assert.equal(
-    local.openResource?.args?.at(-1),
-    "file:///srv/css/panels/main.bob?app=%3Capp-name-from-list%3E",
-  );
+  // joinPlatformPath resolves POSIX roots with path.posix on any host, but
+  // filesystemResourceUrl hands a POSIX path to pathToFileURL, which is
+  // host-native: on Windows that resolves "/srv/..." against the current drive
+  // and yields file:///D:/srv/... . That only affects validating a POSIX config
+  // FROM a Windows host — at launch a target is always materialized for the
+  // host's own platform — and the Windows URL shape has its own case below
+  // ("Phoebus app selectors use file URIs for Windows filesystem resources").
+  if (process.platform !== "win32") {
+    assert.equal(
+      local.openResource?.args?.at(-1),
+      "file:///srv/css/panels/main.bob?app=%3Capp-name-from-list%3E",
+    );
+  }
+  // Nothing platform-dependent here: a URI resource keeps its own query and
+  // gains the app name.
   assert.equal(
     remote.openResource?.args?.at(-1),
     "https://panels.invalid/main.bob?mode=operator&app=%3Capp-name-from-list%3E",
