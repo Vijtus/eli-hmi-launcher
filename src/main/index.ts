@@ -8,6 +8,7 @@ import {
   type LaunchContext,
   type ParsedConfig,
 } from "./config";
+import { buildConfigCandidates, resolveAppRoot, type AppLocation } from "./app-paths";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
 import { defaultDeps } from "./config-repo";
 import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "./dynamic-config";
@@ -120,29 +121,21 @@ function getElectronResourcesPath(): string | undefined {
   return typeof electronProcess.resourcesPath === "string" ? electronProcess.resourcesPath : undefined;
 }
 
-function uniquePaths(values: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of values) {
-    if (!value || seen.has(value)) {
-      continue;
-    }
-    seen.add(value);
-    result.push(value);
-  }
-  return result;
+// Single source of truth for "where am I installed", shared by the config
+// candidates and by `${APP_ROOT}` expansion inside config files.
+function currentAppLocation(): AppLocation {
+  return {
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    resourcesPath: getElectronResourcesPath(),
+    executableDir: path.dirname(process.execPath),
+    cwd: process.cwd(),
+    userDataDir: app.getPath("userData"),
+  };
 }
 
 function getDefaultConfigCandidates(): string[] {
-  const appRoot = app.getAppPath();
-  const executableDir = path.dirname(process.execPath);
-  const resourcesPath = getElectronResourcesPath();
-  return uniquePaths([
-    path.join(process.cwd(), "config", "launcher.yaml"),
-    path.join(appRoot, "config", "launcher.yaml"),
-    resourcesPath ? path.join(resourcesPath, "config", "launcher.yaml") : "",
-    path.join(executableDir, "config", "launcher.yaml"),
-  ]);
+  return buildConfigCandidates(currentAppLocation());
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -531,7 +524,7 @@ async function bootstrap(): Promise<void> {
     gitConfig = await resolveGitConfig();
     configPath = await resolveConfigPath();
     loaded = loadConfigFromFile(configPath, {
-      appRoot: app.getAppPath(),
+      appRoot: resolveAppRoot(currentAppLocation()),
       configDir: path.dirname(configPath),
       catalogCacheDir: path.join(app.getPath("userData"), "catalog-cache"),
       ...(gitConfig ? { overlay: gitConfig.overlay } : {}),
