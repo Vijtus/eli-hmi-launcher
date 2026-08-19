@@ -10,10 +10,12 @@
 //
 //   node scripts/smoke-packaged.mjs [path-to-binary]
 //
-// Runs on Windows, macOS and Linux.
+// Runs on Windows, macOS and Linux. It expects the bundled mock config, whose
+// first entry is a process target; pointed at a catalog whose first entry is a
+// web target it will correctly report that nothing was written to the mock log.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -31,11 +33,28 @@ function info(message) {
   console.log(`\x1b[1;36m[smoke]\x1b[0m ${message}`);
 }
 
-function firstExisting(candidates) {
-  return candidates.find((candidate) => candidate && existsSync(candidate));
+// electron-builder names the binary after `executableName`, and writes one
+// output directory per arch (linux-unpacked, linux-arm64-unpacked, mac-arm64,
+// ...). Discover both rather than hardcoding names that silently drift.
+function appExecutableName() {
+  const builderConfig = path.join(repoRoot, "electron-builder.yml");
+  if (existsSync(builderConfig)) {
+    const match = /^executableName:\s*(.+)$/m.exec(readFileSync(builderConfig, "utf8"));
+    if (match) return match[1].trim();
+  }
+  return JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).name;
 }
 
-// electron-builder writes per-arch directories, so probe rather than guess.
+function releaseDirsMatching(pattern) {
+  try {
+    return readdirSync(releaseDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && pattern.test(entry.name))
+      .map((entry) => path.join(releaseDir, entry.name));
+  } catch {
+    return [];
+  }
+}
+
 function locateBinary() {
   const explicit = process.argv[2];
   if (explicit) {
@@ -45,20 +64,29 @@ function locateBinary() {
     }
     return resolved;
   }
-  const suffixes = ["", "-x64", "-arm64", "-ia32"];
+
+  const name = appExecutableName();
+  const candidates = [];
+
   if (process.platform === "win32") {
-    return firstExisting(
-      suffixes.map((s) => path.join(releaseDir, `win-unpacked${s}`, "ELI HMI Launcher.exe")),
-    );
+    for (const dir of releaseDirsMatching(/^win.*unpacked$/)) {
+      candidates.push(path.join(dir, `${name}.exe`));
+    }
+  } else if (process.platform === "darwin") {
+    for (const dir of releaseDirsMatching(/^mac/)) {
+      for (const entry of readdirSync(dir)) {
+        if (entry.endsWith(".app")) {
+          candidates.push(path.join(dir, entry, "Contents", "MacOS", name));
+        }
+      }
+    }
+  } else {
+    for (const dir of releaseDirsMatching(/^linux.*unpacked$/)) {
+      candidates.push(path.join(dir, name));
+    }
   }
-  if (process.platform === "darwin") {
-    return firstExisting(
-      suffixes.map((s) =>
-        path.join(releaseDir, `mac${s}`, "ELI HMI Launcher.app", "Contents", "MacOS", "ELI HMI Launcher"),
-      ),
-    );
-  }
-  return firstExisting(suffixes.map((s) => path.join(releaseDir, `linux-unpacked${s}`, "eli-hmi-launcher")));
+
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 async function delay(ms) {

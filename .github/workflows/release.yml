@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The rpm target needs rpmbuild, which ubuntu-latest does not ship.
+      - name: Install rpm tooling
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y rpm
+
+      - run: npm ci
+
+      # Builds are unsigned; --publish never keeps electron-builder from trying
+      # to upload anything itself. The release job below owns publishing.
+      - name: Build installers
+        run: npm run dist:${{ matrix.platform }} -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.tar.gz
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # Uses the preinstalled gh CLI rather than a third-party action so the
+      # release path pulls in no extra supply-chain surface.
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          UNSIGNED_NOTE: >-
+            These installers are **unsigned**. See docs/INSTALL.md for the one-time
+            Windows SmartScreen and macOS Gatekeeper steps.
+        run: |
+          set -euo pipefail
+          ls -lh artifacts
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes --notes "$UNSIGNED_NOTE"
+          fi
+          gh release upload "$TAG" artifacts/* --clobber

@@ -14,11 +14,38 @@ The renderer only displays/filters and sends a launch **id** over IPC. The main
 launching, including instance/write-mode access checks. The renderer never
 receives or sends raw commands or resolved access policies.
 
-Version: `0.4.0`. This implementation run used Node `v22.16.0`; Electron 40 requires a currently supported Node toolchain for development.
+Version: `0.4.0`. Requires Node 20.19+ for development; Electron 40 requires a currently supported Node toolchain. Runs on Windows, macOS and Linux, both from source and as an installed application.
 
 ---
 
-## Run
+## Install
+
+Prebuilt, **unsigned** installers for all three platforms are published on the
+[Releases page](https://github.com/eli-eric/eli-hmi-launcher/releases):
+
+| OS | Artifact |
+|---|---|
+| Windows | `-setup.exe` (per-user, no admin) or `-portable.exe` |
+| macOS | `.dmg` (Apple Silicon and Intel) |
+| Linux | `.AppImage`, `.deb`, `.rpm`, or `.tar.gz` |
+
+Because they are unsigned, Windows shows a SmartScreen prompt and macOS shows a
+Gatekeeper prompt the first time. **[docs/INSTALL.md](docs/INSTALL.md)** has the
+one-time steps for each, plus where to put your own `launcher.yaml`.
+
+## Run from source
+
+Needs Node 20.19+ and a desktop session. Identical on all three platforms:
+
+```sh
+./run.sh          # Linux / macOS
+```
+```bat
+run.cmd           :: Windows
+```
+
+Both install dependencies on first run, validate the config, and start the app;
+`npm run app` is the same thing. To drive the steps yourself:
 
 ```sh
 npm ci
@@ -38,6 +65,8 @@ Get-Content "$env:TEMP\eli-hmi-launcher-mock.log" -Wait
 
 ## Build / typecheck / validate
 
+Everything in this block runs on Windows, macOS and Linux:
+
 ```sh
 npm test                             # regression tests for filtering, launch validation, UI palette, and config
 npm run typecheck                    # tsc -b (main+preload+shared+scripts, and renderer)
@@ -46,11 +75,38 @@ npm run check                        # typecheck + build in one go
 npm run validate-config              # validate config/launcher.yaml with the real parser
 npm run validate-config -- <path>    # validate a specific YAML (exit 1 on error)
 npm run intake-to-yaml -- <csv>      # convert a completed intake sheet to YAML entries
-npm run smoke:hmi-lifecycle           # exercise the loopback lifecycle HTTP contract
-npm run smoke:labview-contract        # execute exact-path POSIX launch fixtures
-npm run smoke:phoebus-local           # validate wrapper argv and local BOB assets
-npm run acceptance:local              # run the IOC + lifecycle + Electron + Phoebus acceptance
-npm run verify                       # tests + build + four config validations + Phoebus assets
+npm run smoke:hmi-lifecycle          # exercise the loopback lifecycle HTTP contract
+npm run verify                       # tests + build + four config validations
+```
+
+### Packaging
+
+```sh
+npm run dist                         # installers for the current OS -> ./release
+npm run dist:win                     # or target one explicitly
+npm run dist:mac
+npm run dist:linux
+npm run pack                         # unpacked directory only, much faster
+npm run smoke:packaged               # start the packaged build, prove it launches a real process
+```
+
+`npm run smoke:packaged` is the check that `npm test` cannot make: packaging is
+what changes where `${APP_ROOT}` points and whether a configured command exists
+on disk at all, so a green test suite says nothing about the shipped artifact.
+CI runs it on all three platforms.
+
+macOS artifacts can only be built on macOS, and the `rpm` target needs
+`rpmbuild` installed. CI builds each platform on its native runner.
+
+### Linux/POSIX-only checks
+
+These need bash plus Linux tooling and are therefore not part of `npm run verify`:
+
+```sh
+npm run smoke:labview-contract       # execute exact-path POSIX launch fixtures
+npm run smoke:phoebus-local          # validate wrapper argv and local BOB assets
+npm run acceptance:local             # run the IOC + lifecycle + Electron + Phoebus acceptance
+npm run verify:linux                 # verify + Phoebus assets
 ```
 
 ## Executable local acceptance
