@@ -32,3 +32,7 @@ Outputs/
 *.pdf
 ELI-Launcher-*.md
 ELI-Launcher-*.jsonl
+# Run folders: the files inside are named report.md / events.jsonl, so a
+# filename pattern does not catch them.
+ELI-Launcher-*/
+Output/

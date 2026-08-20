@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { access, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
+import YAML from "yaml";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -570,7 +571,21 @@ async function bundledConfigRepoDir(): Promise<string | undefined> {
   return (await pathExists(path.join(candidate, "launcher"))) ? candidate : undefined;
 }
 
-async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
+// True when the resolved config file supplies its own `entries:`. A file that
+// defines the table is a statement of intent, and a catalog that merely shipped
+// with the build has no business adding rows to it.
+async function configDeclaresEntries(configPath: string): Promise<boolean> {
+  try {
+    const parsed = YAML.parse(await readFile(configPath, "utf8")) as unknown;
+    const entries = (parsed as { entries?: unknown } | null)?.entries;
+    return Array.isArray(entries) && entries.length > 0;
+  } catch {
+    // Unreadable or malformed: let the normal loader report it properly.
+    return false;
+  }
+}
+
+async function resolveGitConfig(localOwnsCatalog: boolean): Promise<DynamicConfigResult | undefined> {
   const bundled = await bundledConfigRepoDir();
   const options = readDynamicConfigEnv(process.env, {
     cacheDir: path.join(app.getPath("userData"), "config-repo"),
@@ -589,6 +604,14 @@ async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
     !process.env["ELI_LAUNCHER_CONFIG_REPO_URL"] &&
     !process.env["ELI_LAUNCHER_CONFIG_REPO_DIR"] &&
     Boolean(bundled);
+
+  // Both sources firing at once is how one catalog of seven became a table of
+  // fourteen: the ids differ, so nothing de-duplicates them, and the shipped
+  // half arrives without the Technology and Section a zone file cannot express.
+  if (isBundledOnly && localOwnsCatalog) {
+    logEvent("info", "Local config defines its own entries; the bundled catalog is not applied", {});
+    return undefined;
+  }
 
   try {
     return await resolveDynamicConfig(options, await defaultDeps());
@@ -818,8 +841,8 @@ async function bootstrap(): Promise<void> {
   let configPath: string | undefined;
   let gitConfig: DynamicConfigResult | undefined;
   try {
-    gitConfig = await resolveGitConfig();
     configPath = await resolveConfigPath();
+    gitConfig = await resolveGitConfig(await configDeclaresEntries(configPath));
     loaded = loadConfigFromFile(configPath, {
       appRoot: resolveAppRoot(currentAppLocation()),
       configDir: path.dirname(configPath),

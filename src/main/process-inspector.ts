@@ -132,3 +132,124 @@ export async function inspectProcess(
   }
   return await inspectPs(pid);
 }
+
+// ---------------------------------------------------------------------------
+// Batch inspection.
+//
+// The per-process call above costs a subprocess. Reconciling twelve launched
+// GUIs therefore spawned twelve PowerShell processes every five seconds; each
+// takes about a second to start cold, so they blew their two-second timeout,
+// returned no start identity, and every row degraded to `unknown` while the
+// snapshot itself went stale. The programs were fine — the check was what
+// failed, and it failed precisely when the launcher was busiest.
+//
+// One invocation answers for every process at once.
+// ---------------------------------------------------------------------------
+
+const BATCH_TIMEOUT_MS = 10_000;
+
+function emptyObservations(pids: number[], reason: string): Map<number, ProcessObservation> {
+  return new Map(pids.map((pid) => [pid, { alive: processExists(pid), reason }]));
+}
+
+async function inspectWindowsBatch(pids: number[]): Promise<Map<number, ProcessObservation>> {
+  const idList = pids.join(",");
+  const command =
+    `Get-Process -Id ${idList} -ErrorAction SilentlyContinue | ` +
+    `ForEach-Object { [Console]::Out.WriteLine("$($_.Id) $($_.StartTime.ToUniversalTime().Ticks)") }`;
+  try {
+    const result = await execFileAsync(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      { windowsHide: true, timeout: BATCH_TIMEOUT_MS },
+    );
+    const seen = new Map<number, string>();
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const match = /^(\d+)\s+(\d+)$/.exec(line.trim());
+      if (match) {
+        seen.set(Number(match[1]), match[2] as string);
+      }
+    }
+    const observations = new Map<number, ProcessObservation>();
+    for (const pid of pids) {
+      const ticks = seen.get(pid);
+      if (ticks) {
+        observations.set(pid, { alive: true, identity: `windows:${ticks}` });
+      } else {
+        observations.set(pid, { alive: false, reason: "process does not exist" });
+      }
+    }
+    return observations;
+  } catch (error) {
+    // A failed batch must not be read as "everything stopped": fall back to the
+    // cheap liveness check and say the identity is simply unavailable.
+    return emptyObservations(
+      pids,
+      `process start identities are unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function inspectPsBatch(pids: number[]): Promise<Map<number, ProcessObservation>> {
+  try {
+    const result = await execFileAsync(
+      "ps",
+      ["-o", "pid=", "-o", "lstart=", "-o", "comm=", "-p", pids.join(",")],
+      { timeout: BATCH_TIMEOUT_MS },
+    );
+    const seen = new Map<number, string>();
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const match = /^\s*(\d+)\s+(.*\S)\s*$/.exec(line);
+      if (match) {
+        seen.set(Number(match[1]), (match[2] as string).replace(/\s+/g, " "));
+      }
+    }
+    const observations = new Map<number, ProcessObservation>();
+    for (const pid of pids) {
+      const started = seen.get(pid);
+      observations.set(
+        pid,
+        started
+          ? { alive: true, identity: `posix:${started}` }
+          : { alive: false, reason: "process not returned by ps" },
+      );
+    }
+    return observations;
+  } catch (error) {
+    return emptyObservations(
+      pids,
+      `process start identities are unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+export async function inspectProcesses(
+  pids: number[],
+  platform: NodeJS.Platform = process.platform,
+): Promise<Map<number, ProcessObservation>> {
+  const valid = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+  const observations = new Map<number, ProcessObservation>();
+  for (const pid of pids) {
+    if (!valid.includes(pid)) {
+      observations.set(pid, { alive: false, reason: `invalid process id ${pid}` });
+    }
+  }
+  if (valid.length === 0) {
+    return observations;
+  }
+
+  // Linux reads /proc directly, which costs no subprocess at all; batching buys
+  // nothing there and the per-process path is already the cheap one.
+  if (platform === "linux") {
+    for (const pid of valid) {
+      observations.set(pid, await inspectLinux(pid));
+    }
+    return observations;
+  }
+
+  const batch = platform === "win32" ? await inspectWindowsBatch(valid) : await inspectPsBatch(valid);
+  for (const [pid, observation] of batch) {
+    observations.set(pid, observation);
+  }
+  return observations;
+}
