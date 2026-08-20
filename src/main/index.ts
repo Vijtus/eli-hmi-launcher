@@ -13,12 +13,13 @@ import { buildConfigCandidates, resolveAppRoot, type AppLocation } from "./app-p
 import {
   defaultDesktopDir,
   renderFieldReport,
+  type SessionLaunch,
   resolveFieldReportTarget,
   startFieldEventLog,
   type FieldReportTarget,
 } from "./field-report";
-import { preflightConfig } from "./preflight";
-import { surveyRoots } from "./workspace-survey";
+import { preflightConfig, type PreflightFinding } from "./preflight";
+import { surveyRoots, type SurveyResult } from "./workspace-survey";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
 import { defaultDeps } from "./config-repo";
 import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "./dynamic-config";
@@ -35,6 +36,7 @@ import {
   materializeLabviewEpicsTarget,
 } from "./labview-targets";
 import { launchMaterializedProcess, type NativeLaunchResult } from "./native-launcher";
+import { watchLaunch } from "./launch-watch";
 import { PhoebusServerManager } from "./phoebus-server";
 import { assertPhoebusLayoutApplied, materializePhoebusTarget } from "./phoebus-targets";
 import {
@@ -253,9 +255,10 @@ function showConfigErrorWindow(message: string, configPath: string | undefined):
 async function launchProcessTarget(
   target: ProcessLaunchTarget,
   context: LaunchContext,
+  captureTo?: string,
 ): Promise<NativeLaunchResult> {
   const materialized = materializeProcessTarget(target, context);
-  return await launchMaterializedProcess(materialized, context);
+  return await launchMaterializedProcess(materialized, context, captureTo);
 }
 
 async function launchFolderTarget(folderPath: string, context: LaunchContext): Promise<void> {
@@ -292,7 +295,9 @@ async function launchTarget(
     return {};
   }
   if (target.kind === "process") {
-    const result = await launchProcessTarget(target, context);
+    const captureTo = captureFileFor(itemId);
+    const result = await launchProcessTarget(target, context, captureTo);
+    watchAndAmend(itemId, result.receipt.pid, captureTo);
     await runtimeRegistry?.registerProcess({
       entryId: itemId,
       kind: "process",
@@ -305,7 +310,9 @@ async function launchTarget(
   }
   if (target.kind === "labview-dev") {
     const materialized = materializeLabviewDeveloperTarget(target, context);
-    const result = await launchMaterializedProcess(materialized, context);
+    const captureTo = captureFileFor(itemId);
+    const result = await launchMaterializedProcess(materialized, context, captureTo);
+    watchAndAmend(itemId, result.receipt.pid, captureTo);
     await runtimeRegistry?.registerProcess({
       entryId: itemId,
       kind: "labview-dev",
@@ -318,7 +325,9 @@ async function launchTarget(
   }
   if (target.kind === "labview-epics") {
     const materialized = materializeLabviewEpicsTarget(target, context);
-    const result = await launchMaterializedProcess(materialized, context);
+    const captureTo = captureFileFor(itemId);
+    const result = await launchMaterializedProcess(materialized, context, captureTo);
+    watchAndAmend(itemId, result.receipt.pid, captureTo);
     await runtimeRegistry?.registerProcess({
       entryId: itemId,
       kind: "labview-epics",
@@ -476,6 +485,7 @@ function registerIpcHandlers(): void {
           id: itemId,
           focused: policyResult.focused,
         });
+        recordLaunch({ id: itemId, label, ok: false, error: unperformed, at: nowIso });
         return {
           ok: false,
           id: itemId,
@@ -488,6 +498,14 @@ function registerIpcHandlers(): void {
       const diagnostics = policyResult.value ?? {};
       const durationMs = Date.now() - startedAt;
       logLaunch({ id: itemId, label, target, ...diagnostics, ok: true, durationMs });
+      recordLaunch({
+        id: itemId,
+        label,
+        ok: true,
+        command: diagnostics.resolvedCommand,
+        args: diagnostics.resolvedArgs,
+        at: nowIso,
+      });
       return { ok: true, id: itemId, label, kind: target.kind, launchedAt: nowIso };
     } catch (error) {
       const durationMs = Date.now() - startedAt;
@@ -501,6 +519,15 @@ function registerIpcHandlers(): void {
         ok: false,
         error: errorMessage,
         durationMs,
+      });
+      recordLaunch({
+        id: itemId,
+        label,
+        ok: false,
+        command: diagnostics?.resolvedCommand,
+        args: diagnostics?.resolvedArgs,
+        error: errorMessage,
+        at: nowIso,
       });
       return { ok: false, id: itemId, label, kind: target.kind, error: errorMessage, launchedAt: nowIso };
     }
@@ -536,17 +563,112 @@ async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
   if (!options) {
     return undefined;
   }
+  // A catalog the operator explicitly configured is a hard requirement: if it
+  // cannot be resolved, running on some other configuration would be worse than
+  // not running. A catalog that merely shipped with the build is a convenience,
+  // and letting it strand a machine it has never heard of — even one with a
+  // perfectly good local config, or an explicit ELI_LAUNCHER_CONFIG — turns a
+  // fallback into a single point of failure.
+  const isBundledOnly =
+    !process.env["ELI_LAUNCHER_CONFIG_REPO_URL"] &&
+    !process.env["ELI_LAUNCHER_CONFIG_REPO_DIR"] &&
+    Boolean(bundled);
+
   try {
     return await resolveDynamicConfig(options, await defaultDeps());
   } catch (error) {
+    const message = redactError(error, options.token, options.username);
+    if (isBundledOnly) {
+      logEvent("warn", "Bundled catalog does not cover this machine; continuing without it", {
+        error: message,
+      });
+      return undefined;
+    }
     // Redact before the message can reach a log line or the error window.
-    throw new Error(redactError(error, options.token, options.username));
+    throw new Error(message);
   }
 }
 
 // Set when this run is recording next to a portable executable; surfaced to the
 // renderer so the operator can see where the file is.
 let fieldReport: FieldReportTarget | undefined;
+// Every launch the operator attempted, so the readable report can say what
+// actually happened rather than only what could have.
+const sessionLaunches: SessionLaunch[] = [];
+// Kept so the report can be rewritten on exit with the session included.
+let lastReportContext:
+  | {
+      configPath: string | undefined;
+      gitConfig: DynamicConfigResult | undefined;
+      findings: PreflightFinding[];
+      survey: SurveyResult[];
+    }
+  | undefined;
+
+function recordLaunch(entry: SessionLaunch): void {
+  sessionLaunches.push(entry);
+}
+
+// Where a launched program's own output is captured, so a LabVIEW error dialog
+// leaves something readable behind. Only active for a recording run.
+function captureFileFor(itemId: string): string | undefined {
+  if (!fieldReport) {
+    return undefined;
+  }
+  const safeId = itemId.replace(/[^A-Za-z0-9._-]+/g, "-");
+  return path.join(fieldReport.directory, `${reportStem()}-launch-${safeId}.log`);
+}
+
+function reportStem(): string {
+  return path.basename(fieldReport?.reportPath ?? "run").replace(/-report\.md$/, "");
+}
+
+// Follows a launched process for a few seconds and amends its session record
+// with what became of it. Never awaited by the launch path: the operator gets
+// their window immediately and the report is enriched behind them.
+const pendingWatches = new Set<Promise<void>>();
+
+function watchAndAmend(itemId: string, pid: number | undefined, captureTo: string | undefined): void {
+  if (pid === undefined) {
+    return;
+  }
+  const watching = watchLaunch(pid, captureTo)
+    .then((watched) => {
+      const entry = [...sessionLaunches].reverse().find((launch) => launch.id === itemId && launch.ok);
+      if (!entry) {
+        return;
+      }
+      entry.outcome = watched.outcome;
+      entry.observedForMs = watched.observedForMs;
+      if (watched.output) {
+        entry.output = watched.output;
+      }
+      logEvent(watched.outcome === "exited-early" ? "warn" : "info", "Launch outcome observed", {
+        id: itemId,
+        outcome: watched.outcome,
+        observedForMs: watched.observedForMs,
+      });
+    })
+    .catch(() => undefined);
+  pendingWatches.add(watching);
+  void watching.finally(() => pendingWatches.delete(watching));
+}
+
+// Closing the window seconds after the last click is the normal case, so the
+// report would otherwise miss exactly the outcomes it was opened to capture.
+// Bounded so a stuck watch cannot hold the application open.
+async function settlePendingWatches(limitMs = 12_000): Promise<void> {
+  if (pendingWatches.size === 0) {
+    return;
+  }
+  logEvent("info", "Waiting for launch outcomes before writing the report", {
+    pending: pendingWatches.size,
+  });
+  await Promise.race([
+    Promise.allSettled([...pendingWatches]),
+    new Promise((resolve) => setTimeout(resolve, limitMs)),
+  ]);
+}
 
 function startFieldReport(): void {
   fieldReport = resolveFieldReportTarget({
@@ -593,6 +715,7 @@ async function writeFieldReport(
       ...loaded.context.security.allowedCommandRoots,
     ].filter((root) => root.trim());
     const survey = await surveyRoots(surveyRootCandidates);
+    lastReportContext = { configPath, gitConfig, findings, survey };
     const provenance = gitConfig?.provenance;
     const markdown = renderFieldReport({
       appName: loaded.appName,
@@ -625,6 +748,7 @@ async function writeFieldReport(
       configRepoError,
       catalogStatus: loaded.catalogStatus,
       findings,
+      launches: sessionLaunches,
       survey,
       target: fieldReport,
       startedAt: new Date(),
@@ -819,14 +943,72 @@ async function shutdownLifecycle(): Promise<void> {
   }
 }
 
+// The startup report describes what COULD run. Everything the operator actually
+// clicked happens afterwards, so the readable file is rewritten on the way out
+// with the session included — otherwise those outcomes exist only in the JSONL,
+// which nobody reads.
+async function rewriteFieldReportWithSession(): Promise<void> {
+  const context = lastReportContext;
+  if (!fieldReport || !context || !loaded || sessionLaunches.length === 0) {
+    return;
+  }
+  await settlePendingWatches();
+  try {
+    // Deliberately reuses the startup findings and survey. Re-scanning here
+    // would add a minute to shutdown for information that cannot have changed.
+    const provenance = context.gitConfig?.provenance;
+    const markdown = renderFieldReport({
+      appName: loaded.appName,
+      appVersion: app.getVersion(),
+      hostname: os.hostname(),
+      configHostname: process.env["ELI_LAUNCHER_CONFIG_HOSTNAME"],
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron ?? "unknown",
+      configPath: context.configPath,
+      ...(provenance
+        ? {
+            configRepo: {
+              url: redactError(
+                provenance.url,
+                process.env["ELI_LAUNCHER_CONFIG_REPO_TOKEN"],
+                process.env["ELI_LAUNCHER_CONFIG_REPO_USERNAME"],
+              ),
+              ref: provenance.ref,
+              source: provenance.source,
+              commitSha: provenance.commitSha,
+              fetchedAt: provenance.fetchedAt,
+              zone: provenance.zone,
+              hostFile: provenance.hostFile,
+              zoneFile: provenance.zoneFile,
+              entryCount: provenance.entryCount,
+            },
+          }
+        : {}),
+      catalogStatus: loaded.catalogStatus,
+      findings: context.findings,
+      launches: sessionLaunches,
+      survey: context.survey,
+      target: fieldReport,
+      startedAt: new Date(),
+    });
+    await writeFile(fieldReport.reportPath, markdown, "utf8");
+  } catch {
+    // The report already exists from startup; failing to enrich it must not
+    // hold up shutdown.
+  }
+}
+
 app.on("before-quit", (event) => {
   runtimeRegistry?.stop();
-  if (!lifecycleCoordinator || lifecycleShutdownStarted) {
+  if (lifecycleShutdownStarted) {
     return;
   }
   event.preventDefault();
   lifecycleShutdownStarted = true;
-  void shutdownLifecycle()
+  void rewriteFieldReportWithSession()
+    .catch(() => undefined)
+    .then(() => shutdownLifecycle())
     .catch((error: unknown) => {
       logEvent("warn", "Lifecycle shutdown deadline failed", {
         error: error instanceof Error ? error.message : String(error),

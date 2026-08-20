@@ -186,3 +186,89 @@ test("a stale catalog is called out", () => {
   assert.match(text, /CATALOG STALE/);
   assert.match(text, /zone file could not be refreshed/);
 });
+
+// The startup report describes what COULD run; the operator clicks afterwards.
+// Those outcomes previously existed only in the JSONL, which nobody reads, so a
+// run where six of eight programs started looked identical to one where none did.
+test("launch attempts and their outcomes appear in the readable report", () => {
+  const text = report([finding({ status: "ready" })], {
+    launches: [
+      {
+        id: "cm-001",
+        label: "Camera Manager — RMC00-001",
+        ok: true,
+        command: "C:\\ws\\Standalone\\CM\\Builds\\CM.exe",
+        args: ["RMC00-001", "Camera Manager", "TESTZ"],
+        at: "2026-08-20T12:20:00.000Z",
+      },
+      {
+        id: "fp-001",
+        label: "Fast Pointing IOC",
+        ok: false,
+        command: "C:\\ws\\missing.exe",
+        error: "Configured command does not exist: C:\\ws\\missing.exe",
+        at: "2026-08-20T12:21:00.000Z",
+      },
+    ],
+  });
+  assert.match(text, /\*\*1 of 2 launch attempts started a process\.\*\*/);
+  assert.match(text, /\*\*STARTED\*\* — Camera Manager — RMC00-001/);
+  assert.match(text, /\*\*FAILED TO START\*\* — Fast Pointing IOC/);
+  assert.match(text, /Configured command does not exist/);
+  assert.match(text, /RMC00-001","Camera Manager","TESTZ/);
+});
+
+test("a run where nothing was clicked says so rather than implying success", () => {
+  const text = report([finding({ status: "ready" })]);
+  assert.match(text, /Nothing was clicked during this run\./);
+});
+
+// Resolving a path and starting the right program are different claims; several
+// entries here resolved to real but probably-wrong executables.
+test("the report does not let a started process imply the right program opened", () => {
+  const text = report([finding({})], {
+    launches: [{ id: "a", label: "A", ok: true, at: "2026-08-20T12:20:00.000Z" }],
+  });
+  assert.match(text, /not proof the RIGHT program opened/);
+});
+
+// The case the operator actually reported: a LabVIEW GUI that spawns, throws an
+// error dialog and dies. It returns a pid, so without watching it reads as a
+// success and the report contradicts what the person saw on screen.
+test("a process that started then quit is not reported as running", () => {
+  const text = report([finding({})], {
+    launches: [
+      {
+        id: "cm",
+        label: "Camera Manager",
+        ok: true,
+        outcome: "exited-early",
+        observedForMs: 1000,
+        output: "LabVIEW: Error 1055 occurred at Open VI Reference",
+        at: "2026-08-20T12:20:00.000Z",
+      },
+    ],
+  });
+  assert.match(text, /\*\*STARTED THEN QUIT\*\*/);
+  assert.doesNotMatch(text, /\*\*RUNNING\*\*/);
+  assert.match(text, /did not stay open/);
+  // The program's own words are the actual explanation.
+  assert.match(text, /Error 1055 occurred at Open VI Reference/);
+});
+
+test("a process still alive at the end of the watch is reported as running", () => {
+  const text = report([finding({})], {
+    launches: [
+      {
+        id: "cm",
+        label: "Camera Manager",
+        ok: true,
+        outcome: "still-running",
+        observedForMs: 10_000,
+        at: "2026-08-20T12:20:00.000Z",
+      },
+    ],
+  });
+  assert.match(text, /\*\*RUNNING\*\*/);
+  assert.match(text, /still running 10s later/);
+});

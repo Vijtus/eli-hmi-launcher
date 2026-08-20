@@ -117,6 +117,23 @@ const STATUS_LABEL: Record<PreflightStatus, string> = {
   "not-checked": "NOT CHECKED",
 };
 
+// One click and what came of it. The startup report describes what COULD run;
+// this describes what the operator actually tried.
+export type SessionLaunch = {
+  id: string;
+  label: string;
+  ok: boolean;
+  command?: string | undefined;
+  args?: string[] | undefined;
+  error?: string | undefined;
+  at: string;
+  /** What became of it shortly after launch, when it was watched. */
+  outcome?: "still-running" | "exited-early" | "unknown" | undefined;
+  observedForMs?: number | undefined;
+  /** Anything the process printed — usually the actual error text. */
+  output?: string | undefined;
+};
+
 export type FieldReportInput = {
   appName: string;
   appVersion: string;
@@ -142,6 +159,7 @@ export type FieldReportInput = {
   configRepoError?: string | undefined;
   catalogStatus?: CatalogStatus | undefined;
   findings: PreflightFinding[];
+  launches?: SessionLaunch[] | undefined;
   survey?: SurveyResult[] | undefined;
   target: FieldReportTarget;
   startedAt: Date;
@@ -267,6 +285,64 @@ export function renderFieldReport(input: FieldReportInput): string {
         lines.push(`  - ${finding.detail}`);
       }
     }
+  }
+  lines.push("");
+
+  // Resolving a path only proves a file is there. This is the part that says
+  // whether pressing the button actually started anything, which is the
+  // question the whole exercise is really asking.
+  lines.push("## What was launched in this session");
+  lines.push("");
+  if (!input.launches || input.launches.length === 0) {
+    lines.push("Nothing was clicked during this run.");
+  } else {
+    const started = input.launches.filter((launch) => launch.ok).length;
+    lines.push(`**${started} of ${input.launches.length} launch attempts started a process.**`);
+    lines.push("");
+    for (const launch of input.launches) {
+      // A process that spawned and then died is the case an operator sees as an
+      // error dialog, and it must not read as a success.
+      const verdict = !launch.ok
+        ? "**FAILED TO START**"
+        : launch.outcome === "exited-early"
+          ? "**STARTED THEN QUIT**"
+          : launch.outcome === "still-running"
+            ? "**RUNNING**"
+            : "**STARTED**";
+      lines.push(`- ${verdict} — ${launch.label} \`${launch.id}\` at ${launch.at}`);
+      if (launch.outcome === "exited-early") {
+        lines.push(
+          `  - exited about ${Math.round((launch.observedForMs ?? 0) / 100) / 10}s after launching — ` +
+            "it did not stay open",
+        );
+      } else if (launch.outcome === "still-running") {
+        lines.push(`  - still running ${Math.round((launch.observedForMs ?? 0) / 1000)}s later`);
+      }
+      if (launch.command) {
+        lines.push(`  - command: \`${launch.command}\``);
+      }
+      if (launch.args && launch.args.length > 0) {
+        lines.push(`  - args: \`${JSON.stringify(launch.args)}\``);
+      }
+      if (launch.error) {
+        lines.push(`  - ${launch.error}`);
+      }
+      if (launch.output) {
+        lines.push("  - what it printed:");
+        lines.push("");
+        lines.push("    ```");
+        for (const line of launch.output.split("\n")) {
+          lines.push(`    ${line}`);
+        }
+        lines.push("    ```");
+      }
+    }
+    lines.push("");
+    lines.push(
+      "_RUNNING means the process was still alive ten seconds after launching. It is still " +
+        "not proof the RIGHT program opened: several entries can resolve to real but different " +
+        "executables. Compare against what appeared on screen._",
+    );
   }
   lines.push("");
 
