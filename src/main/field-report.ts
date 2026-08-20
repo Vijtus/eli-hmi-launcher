@@ -96,12 +96,20 @@ export function resolveFieldReportTarget(
     if (!candidate.directory || !writable(candidate.directory)) {
       continue;
     }
+    // One folder per run. A single run writes a report, an event log and one
+    // capture file per launch; scattering those across a Desktop turns five
+    // runs into forty loose files and makes the set you actually want hard to
+    // pick out and hard to send on.
     const stem = `ELI-Launcher-${safeHostname(environment.hostname)}-${timestamp(environment.now)}`;
+    const runDirectory = path.join(candidate.directory, stem);
+    if (!writable(runDirectory)) {
+      continue;
+    }
     return {
-      directory: candidate.directory,
+      directory: runDirectory,
       origin: candidate.origin,
-      reportPath: path.join(candidate.directory, `${stem}-report.md`),
-      eventLogPath: path.join(candidate.directory, `${stem}-events.jsonl`),
+      reportPath: path.join(runDirectory, "report.md"),
+      eventLogPath: path.join(runDirectory, "events.jsonl"),
     };
   }
   return undefined;

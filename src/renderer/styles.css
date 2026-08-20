@@ -527,6 +527,45 @@ main.container-fluid {
 }
 
 /* Only launch failures use this region; successful launches remain silent. */
+.config-location {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid #ffffff;
+  background: #000000;
+  color: #ffffff;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.config-location[hidden] {
+  display: none;
+}
+
+.config-location-open {
+  flex: none;
+  margin: 0;
+  padding: 3px 10px;
+  border: 1px solid #ffffff;
+  border-radius: 0;
+  background: #ffffff;
+  color: #000000;
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  width: auto;
+}
+
+.config-location-open:hover {
+  background: #000000;
+  color: #ffffff;
+}
+
 /* Inverted against the fixed black-and-white palette so "this run is being
    recorded" cannot be mistaken for ordinary chrome. */
 .field-report-banner {

@@ -34,15 +34,14 @@ test("a portable run records beside the executable", () => {
     allWritable,
   );
   assert.equal(target?.origin, "portable");
-  assert.equal(target?.directory, "/media/usb/ELI");
+  assert.equal(path.dirname(target?.directory ?? ""), "/media/usb/ELI");
+  // Everything for one run lands in one folder named after the machine and time.
   assert.equal(
-    path.basename(target?.reportPath ?? ""),
-    "ELI-Launcher-testz-deploy-2026-08-19_15-04-05-report.md",
+    target?.directory,
+    path.join("/media/usb/ELI", "ELI-Launcher-testz-deploy-2026-08-19_15-04-05"),
   );
-  assert.equal(
-    path.basename(target?.eventLogPath ?? ""),
-    "ELI-Launcher-testz-deploy-2026-08-19_15-04-05-events.jsonl",
-  );
+  assert.equal(path.basename(target?.reportPath ?? ""), "report.md");
+  assert.equal(path.basename(target?.eventLogPath ?? ""), "events.jsonl");
 });
 
 test("an explicit directory beats the portable location", () => {
@@ -51,7 +50,7 @@ test("an explicit directory beats the portable location", () => {
     allWritable,
   );
   assert.equal(target?.origin, "explicit");
-  assert.equal(target?.directory, "/srv/reports");
+  assert.equal(path.dirname(target?.directory ?? ""), "/srv/reports");
 });
 
 // A stick can be read-only, and losing the report silently is the one outcome
@@ -59,16 +58,16 @@ test("an explicit directory beats the portable location", () => {
 test("a read-only stick falls back to the Desktop", () => {
   const target = resolveFieldReportTarget(
     environment({ [PORTABLE_DIR_ENV]: "/media/usb/ELI" }),
-    (directory) => directory !== "/media/usb/ELI",
+    (directory) => !directory.startsWith("/media/usb/ELI"),
   );
   assert.equal(target?.origin, "desktop");
-  assert.equal(target?.directory, "/home/op/Desktop");
+  assert.equal(path.dirname(target?.directory ?? ""), "/home/op/Desktop");
 });
 
 test("an unwritable Desktop falls back to userData", () => {
   const target = resolveFieldReportTarget(
     environment({ [FIELD_REPORT_ENABLE_ENV]: "1" }),
-    (directory) => directory === "/home/op/.config/eli-hmi-launcher",
+    (directory) => directory.startsWith("/home/op/.config/eli-hmi-launcher"),
   );
   assert.equal(target?.origin, "userData");
 });
@@ -85,14 +84,14 @@ test("a hostile hostname cannot escape the report directory", () => {
     { ...environment({ [PORTABLE_DIR_ENV]: "/media/usb" }), hostname: "../../etc/pwn" },
     allWritable,
   );
-  const name = path.basename(target?.reportPath ?? "");
+  const name = path.basename(target?.directory ?? "");
   // The property that matters: the file lands where it was meant to. Compared
   // through path.join so the expectation is separator-correct on the host
   // running the test rather than assuming POSIX.
-  assert.equal(target?.reportPath, path.join("/media/usb", name));
+  assert.equal(target?.directory, path.join("/media/usb", name));
   assert.ok(!name.includes("/") && !name.includes("\\"), `separator survived: ${name}`);
   assert.ok(!name.includes(".."), `dot run survived: ${name}`);
-  assert.equal(name, "ELI-Launcher-etc-pwn-2026-08-19_15-04-05-report.md");
+  assert.equal(name, "ELI-Launcher-etc-pwn-2026-08-19_15-04-05");
 });
 
 test("an FQDN keeps its dots so the machine stays identifiable", () => {
@@ -100,7 +99,7 @@ test("an FQDN keeps its dots so the machine stays identifiable", () => {
     { ...environment({ [PORTABLE_DIR_ENV]: "/media/usb" }), hostname: "TESTZ-Deploy.eli.cz" },
     allWritable,
   );
-  assert.match(path.basename(target?.reportPath ?? ""), /^ELI-Launcher-testz-deploy\.eli\.cz-/);
+  assert.match(path.basename(target?.directory ?? ""), /^ELI-Launcher-testz-deploy\.eli\.cz-/);
 });
 
 // --- report content --------------------------------------------------------

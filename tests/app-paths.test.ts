@@ -93,3 +93,35 @@ test("candidates are de-duplicated when the layout collapses", () => {
   assert.equal(new Set(candidates).size, candidates.length);
   assert.equal(candidates.length, 2);
 });
+
+// A portable build is meant to be self-contained and hand-editable: the exe and
+// its launcher.yaml travel together in one folder, and editing that file in
+// Notepad is the whole point. `executableDir` cannot serve this, because a
+// portable exe unpacks itself into a temp folder that is deleted on exit.
+test("a portable run prefers launcher.yaml sitting beside the executable", () => {
+  const candidates = buildConfigCandidates(
+    packagedLocation({
+      portableDir: "/media/usb/ELI",
+      executableDir: "/tmp/unpacked-abc123",
+    }),
+  );
+  assert.equal(candidates[0], path.join("/media/usb/ELI", "launcher.yaml"));
+  // The per-user location still works as the fallback for installed builds.
+  assert.ok(candidates.includes(path.join("/home/op/.config/eli-hmi-launcher", "launcher.yaml")));
+});
+
+test("without a portable directory the packaged order is unchanged", () => {
+  const candidates = buildConfigCandidates(packagedLocation());
+  assert.equal(candidates[0], path.join("/home/op/.config/eli-hmi-launcher", "launcher.yaml"));
+});
+
+// The portable folder is chosen by putting the executable in it, unlike cwd
+// which is inherited from whatever started the shortcut.
+test("a portable directory does not reintroduce the cwd footgun", () => {
+  const candidates = buildConfigCandidates(
+    packagedLocation({ portableDir: "/media/usb/ELI", cwd: "/tmp/attacker" }),
+  );
+  for (const candidate of candidates) {
+    assert.ok(!candidate.startsWith("/tmp/attacker"), `cwd leaked: ${candidate}`);
+  }
+});

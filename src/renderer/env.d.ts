@@ -1,4 +1,4 @@
-import type { FieldReportInfo, LauncherConfig, LaunchResult, RuntimeSnapshot } from "../shared/types";
+import type { ConfigLocation, FieldReportInfo, LauncherConfig, LaunchResult, RuntimeSnapshot } from "../shared/types";
 
 declare global {
   interface Window {
@@ -8,6 +8,8 @@ declare global {
       onRuntimeStates(listener: (snapshot: RuntimeSnapshot) => void): () => void;
       launchItem(itemId: string): Promise<LaunchResult>;
       getFieldReport?(): Promise<FieldReportInfo | null>;
+      getConfigLocation?(): Promise<ConfigLocation | null>;
+      revealConfig?(): Promise<void>;
     };
   }
 }

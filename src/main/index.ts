@@ -64,6 +64,7 @@ import type {
   ProcessLaunchTarget,
   RuntimeSnapshot,
   FieldReportInfo,
+  ConfigLocation,
 } from "../shared/types";
 
 const DEFAULT_APP_NAME = "L4 Launcher";
@@ -75,6 +76,10 @@ let hmiApi: HmiApiAdapter = new NoopHmiApiAdapter();
 let lifecycleCoordinator: HmiLifecycleCoordinator | undefined;
 const entryLaunchGate = new EntryLaunchGate();
 let lifecycleShutdownStarted = false;
+// The config file this run is using, surfaced to the renderer.
+let activeConfigPath: string | undefined;
+// False when it lives inside the packaged app, where editing is pointless.
+let activeConfigEditable = false;
 let lastLifecycleHealthStatus: string | undefined;
 
 function emptyRuntimeSnapshot(): RuntimeSnapshot {
@@ -144,6 +149,7 @@ function currentAppLocation(): AppLocation {
     executableDir: path.dirname(process.execPath),
     cwd: process.cwd(),
     userDataDir: app.getPath("userData"),
+    portableDir: process.env["PORTABLE_EXECUTABLE_DIR"],
   };
 }
 
@@ -384,6 +390,16 @@ function registerIpcHandlers(): void {
   // Recording is visible by design: the operator must be able to find the file
   // to send it back, and a shared control-room machine should never be writing
   // diagnostics about itself without saying so.
+  // Which file is actually in charge. "Where is the yaml?" should be answerable
+  // from the window, not by reading documentation or a log.
+  ipcMain.handle("launcher:get-config-location", async (): Promise<ConfigLocation | null> =>
+    activeConfigPath ? { path: activeConfigPath, editable: activeConfigEditable } : null,
+  );
+  ipcMain.handle("launcher:reveal-config", async (): Promise<void> => {
+    if (activeConfigPath) {
+      shell.showItemInFolder(activeConfigPath);
+    }
+  });
   ipcMain.handle("launcher:get-field-report", async (): Promise<FieldReportInfo | null> =>
     fieldReport
       ? { directory: fieldReport.directory, reportPath: fieldReport.reportPath }
@@ -616,11 +632,7 @@ function captureFileFor(itemId: string): string | undefined {
     return undefined;
   }
   const safeId = itemId.replace(/[^A-Za-z0-9._-]+/g, "-");
-  return path.join(fieldReport.directory, `${reportStem()}-launch-${safeId}.log`);
-}
-
-function reportStem(): string {
-  return path.basename(fieldReport?.reportPath ?? "run").replace(/-report\.md$/, "");
+  return path.join(fieldReport.directory, `launch-${safeId}.log`);
 }
 
 // Follows a launched process for a few seconds and amends its session record
@@ -814,6 +826,12 @@ async function bootstrap(): Promise<void> {
       catalogCacheDir: path.join(app.getPath("userData"), "catalog-cache"),
       ...(gitConfig ? { overlay: gitConfig.overlay } : {}),
     });
+    activeConfigPath = configPath;
+    // A config inside the app bundle cannot be edited in place: a portable exe
+    // unpacks to a temp folder that is deleted on exit, and an installed one is
+    // admin-owned. Saying so is kinder than letting someone edit a file that
+    // vanishes.
+    activeConfigEditable = !configPath.startsWith(resolveAppRoot(currentAppLocation()));
     hmiApi = createHmiApiAdapter(loaded.context.local.hmiApi);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

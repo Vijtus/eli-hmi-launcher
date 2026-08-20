@@ -259,3 +259,11 @@ export type FieldReportInfo = {
   directory: string;
   reportPath: string;
 };
+
+// Where the config this run is using actually lives, so the window can answer
+// "which yaml is in charge?" without anyone reading a log.
+export type ConfigLocation = {
+  path: string;
+  /** False when it sits inside the packaged app and editing it would be futile. */
+  editable: boolean;
+};

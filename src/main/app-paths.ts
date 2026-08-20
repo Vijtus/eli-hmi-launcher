@@ -22,6 +22,13 @@ export type AppLocation = {
   cwd: string;
   /** Electron `app.getPath("userData")`. */
   userDataDir: string;
+  /**
+   * For a portable build, the directory the .exe itself sits in — the USB stick
+   * or wherever it was dropped. electron-builder sets PORTABLE_EXECUTABLE_DIR;
+   * `executableDir` is useless here because a portable exe unpacks itself into
+   * a temporary folder that is deleted on exit.
+   */
+  portableDir?: string | undefined;
 };
 
 function uniquePaths(values: string[]): string[] {
@@ -66,12 +73,16 @@ export function buildConfigCandidates(location: AppLocation): string[] {
 
   if (location.isPackaged) {
     return uniquePaths([
+      // A portable build is meant to be self-contained and hand-editable: the
+      // exe and its launcher.yaml travel together in one folder, and editing
+      // that file in Notepad is the whole point. This is NOT the same footgun
+      // as reading `cwd` — the operator chose this folder by putting the
+      // executable in it, rather than inheriting whatever directory a shortcut
+      // happened to start from.
+      location.portableDir ? path.join(location.portableDir, CONFIG_FILE_NAME) : "",
       // An installed app sits in a read-only, admin-owned directory, so the
       // operator's own catalog has to live somewhere user-writable and has to
-      // win over the bundled example. `cwd` is deliberately NOT consulted when
-      // packaged: an installed launcher is started from arbitrary directories
-      // and the config decides which commands get spawned, so picking one up
-      // from the working directory would be a launch-anything footgun.
+      // win over the bundled example.
       path.join(location.userDataDir, CONFIG_FILE_NAME),
       bundled,
       besideExecutable,
