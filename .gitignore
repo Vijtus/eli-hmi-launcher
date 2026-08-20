@@ -18,3 +18,9 @@ release/
 # Site catalog snapshot: eli-hmi-config is private, this repo is public.
 config-repo/launcher/
 eli-hmi-config-main.zip
+
+# Site material dropped in for analysis. This repo is public; these are not.
+Outputs/
+Deployment.zip
+Launcher.zip
+*.JPG

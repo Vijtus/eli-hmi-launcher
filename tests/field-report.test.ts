@@ -167,6 +167,16 @@ test("a config-repo failure is reported even with no entries to check", () => {
   assert.match(text, /\*\*0 of 0 entries would launch on this machine\.\*\*/);
 });
 
+// Observed on a real machine: a run whose catalog failed to load reported
+// "every catalog entry resolved to a runnable command", which is the opposite
+// of the truth and sends the reader looking in the wrong place.
+test("a run with no entries does not claim everything worked", () => {
+  const text = report([], { configRepoError: "no host file for this machine" });
+  assert.doesNotMatch(text, /every catalog entry resolved/);
+  assert.match(text, /The catalog never loaded, so no entry could be checked/);
+  assert.match(text, /Nothing was checked/);
+});
+
 test("a stale catalog is called out", () => {
   const text = report([finding({})], {
     catalogStatus: { stale: true, sources: [], warnings: ["zone file could not be refreshed"] },

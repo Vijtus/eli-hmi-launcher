@@ -18,6 +18,7 @@ import {
   type FieldReportTarget,
 } from "./field-report";
 import { preflightConfig } from "./preflight";
+import { surveyRoots } from "./workspace-survey";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
 import { defaultDeps } from "./config-repo";
 import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "./dynamic-config";
@@ -574,6 +575,15 @@ async function writeFieldReport(
   }
   try {
     const findings = await preflightConfig(loaded);
+    // Survey the places this deployment says its programs live. When a
+    // configured path turns out to be wrong, the survey is what shows the right
+    // one without another trip to the machine.
+    const surveyRootCandidates = [
+      loaded.context.local.workspaceRoot ?? "",
+      loaded.context.local.cssGuiRoot ?? "",
+      ...loaded.context.security.allowedCommandRoots,
+    ].filter((root) => root.trim());
+    const survey = await surveyRoots(surveyRootCandidates);
     const provenance = gitConfig?.provenance;
     const markdown = renderFieldReport({
       appName: loaded.appName,
@@ -606,6 +616,7 @@ async function writeFieldReport(
       configRepoError,
       catalogStatus: loaded.catalogStatus,
       findings,
+      survey,
       target: fieldReport,
       startedAt: new Date(),
     });

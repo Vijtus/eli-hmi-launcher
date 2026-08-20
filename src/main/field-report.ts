@@ -2,6 +2,7 @@ import { accessSync, appendFileSync, constants, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { PreflightFinding, PreflightStatus } from "./preflight";
+import type { SurveyResult } from "./workspace-survey";
 import type { CatalogStatus } from "../shared/types";
 
 // ---------------------------------------------------------------------------
@@ -141,6 +142,7 @@ export type FieldReportInput = {
   configRepoError?: string | undefined;
   catalogStatus?: CatalogStatus | undefined;
   findings: PreflightFinding[];
+  survey?: SurveyResult[] | undefined;
   target: FieldReportTarget;
   startedAt: Date;
 };
@@ -220,7 +222,13 @@ export function renderFieldReport(input: FieldReportInput): string {
 
   lines.push("## What is not working");
   lines.push("");
-  if (problems.length === 0) {
+  if (input.findings.length === 0) {
+    // "every entry resolved" is a lie when there were no entries to resolve.
+    lines.push(
+      "The catalog never loaded, so no entry could be checked. See **Catalog source** above " +
+        "for the reason — that is the problem to fix first.",
+    );
+  } else if (problems.length === 0) {
     lines.push("Nothing — every catalog entry resolved to a runnable command on this machine.");
   } else {
     for (const status of order.filter((s) => s !== "ready")) {
@@ -247,7 +255,9 @@ export function renderFieldReport(input: FieldReportInput): string {
   lines.push("## What is working");
   lines.push("");
   const good = input.findings.filter((f) => f.status === "ready");
-  if (good.length === 0) {
+  if (input.findings.length === 0) {
+    lines.push("Nothing was checked — the catalog did not load.");
+  } else if (good.length === 0) {
     lines.push("Nothing resolved successfully.");
   } else {
     for (const finding of good) {
@@ -259,6 +269,45 @@ export function renderFieldReport(input: FieldReportInput): string {
     }
   }
   lines.push("");
+
+  // What is actually on disk, as opposed to what the config expected to find.
+  // When a configured path is wrong, this is the section that shows the right one.
+  if (input.survey && input.survey.length > 0) {
+    lines.push("## What is actually on this machine");
+    lines.push("");
+    for (const entry of input.survey) {
+      lines.push(`### \`${entry.root}\``);
+      lines.push("");
+      if (!entry.exists) {
+        lines.push(`**Not usable** — ${entry.reason ?? "unavailable"}.`);
+        lines.push("");
+        continue;
+      }
+      lines.push(
+        `Folders directly inside: ${
+          entry.topLevel.length > 0 ? entry.topLevel.map((n) => `\`${n}\``).join(", ") : "_(none)_"
+        }`,
+      );
+      lines.push("");
+      if (entry.executables.length === 0) {
+        lines.push("No executables found beneath it.");
+      } else {
+        lines.push(`Executables found (${entry.executables.length}):`);
+        lines.push("");
+        lines.push("```");
+        for (const executable of entry.executables) {
+          lines.push(executable);
+        }
+        lines.push("```");
+      }
+      if (entry.truncated) {
+        lines.push("");
+        lines.push(`> Survey was cut short: ${entry.reason ?? "limit reached"}.`);
+      }
+      lines.push("");
+    }
+  }
+
   lines.push("---");
   lines.push("");
   lines.push(
