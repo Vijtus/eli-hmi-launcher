@@ -34,7 +34,7 @@ test("a portable run records beside the executable", () => {
     allWritable,
   );
   assert.equal(target?.origin, "portable");
-  assert.equal(path.dirname(target?.directory ?? ""), "/media/usb/ELI");
+  assert.equal(target?.directory, path.join("/media/usb/ELI", path.basename(target?.directory ?? "")));
   // Everything for one run lands in one folder named after the machine and time.
   assert.equal(
     target?.directory,
@@ -50,7 +50,7 @@ test("an explicit directory beats the portable location", () => {
     allWritable,
   );
   assert.equal(target?.origin, "explicit");
-  assert.equal(path.dirname(target?.directory ?? ""), "/srv/reports");
+  assert.equal(target?.directory, path.join("/srv/reports", path.basename(target?.directory ?? "")));
 });
 
 // A stick can be read-only, and losing the report silently is the one outcome
@@ -61,7 +61,7 @@ test("a read-only stick falls back to the Desktop", () => {
     (directory) => !directory.startsWith("/media/usb/ELI"),
   );
   assert.equal(target?.origin, "desktop");
-  assert.equal(path.dirname(target?.directory ?? ""), "/home/op/Desktop");
+  assert.equal(target?.directory, path.join("/home/op/Desktop", path.basename(target?.directory ?? "")));
 });
 
 test("an unwritable Desktop falls back to userData", () => {

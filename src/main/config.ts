@@ -1199,8 +1199,13 @@ export function assertCommandAllowed(
   });
 
   if (!allowed) {
+    // Reports the path as configured, not the symlink-resolved form used for
+    // the comparison above. Someone reading this has to find the string in
+    // their own YAML; echoing an internally normalised variant of it (macOS
+    // rewriting /var to /private/var, say) sends them looking for text they
+    // never wrote.
     throw new Error(
-      `Process command '${candidate}' is not inside any allowed command root ` +
+      `Process command '${absolute}' is not inside any allowed command root ` +
         `(${policy.allowedCommandRoots.join(", ") || "<none configured>"}). ` +
         `Add its directory to security.allowedCommandRoots or move the wrapper into an allowed root.`,
     );
