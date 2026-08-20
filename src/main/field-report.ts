@@ -300,9 +300,14 @@ export function renderFieldReport(input: FieldReportInput): string {
         }
         lines.push("```");
       }
+      lines.push("");
+      lines.push(`_Scanned ${entry.scanned} directory entries._`);
       if (entry.truncated) {
         lines.push("");
-        lines.push(`> Survey was cut short: ${entry.reason ?? "limit reached"}.`);
+        lines.push(
+          `> **Survey was cut short: ${entry.reason ?? "limit reached"}.** ` +
+            "Anything below is therefore incomplete — absence here is not proof of absence on disk.",
+        );
       }
       lines.push("");
     }

@@ -45,6 +45,17 @@ test("the survey finds the executables that actually exist", async () => {
   }
 });
 
+test("the scan count is recorded so truncation can be judged", async () => {
+  const root = workspace();
+  try {
+    const result = await surveyRoot(root);
+    assert.ok(result.scanned > 0, "expected a non-zero scan count");
+    assert.equal(result.truncated, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a missing root is reported, not thrown", async () => {
   const result = await surveyRoot(path.join(os.tmpdir(), "eli-survey-does-not-exist"));
   assert.equal(result.exists, false);

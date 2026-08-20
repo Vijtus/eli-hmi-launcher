@@ -22,11 +22,15 @@ export type SurveyLimits = {
 // Depth 10 because the observed TESTZ layout puts a real-time build at
 // TESTZone/Deployment/Resource/Host/<host>/Builds/c/ni-rt/startup/<name>.rtexe,
 // which is nine levels below the workspace root. Six missed it entirely.
+// The first real run hit 20k entries partway through a 175-executable
+// workspace and never reached the directory the operator actually cared about,
+// so the survey answered nothing. Entries are cheap to walk; the wall-clock
+// deadline is the limit that protects the operator, not the counter.
 export const DEFAULT_SURVEY_LIMITS: SurveyLimits = {
-  maxDepth: 10,
-  maxEntries: 20_000,
-  maxExecutables: 500,
-  deadlineMs: 25_000,
+  maxDepth: 12,
+  maxEntries: 400_000,
+  maxExecutables: 1_500,
+  deadlineMs: 60_000,
 };
 
 export type SurveyResult = {
@@ -38,6 +42,8 @@ export type SurveyResult = {
   executables: string[];
   /** True when a limit stopped the walk before it finished. */
   truncated: boolean;
+  /** How many directory entries were examined, so truncation is quantified. */
+  scanned: number;
   reason?: string;
 };
 
@@ -70,6 +76,7 @@ export async function surveyRoot(
     topLevel: [],
     executables: [],
     truncated: false,
+    scanned: 0,
   };
 
   try {
@@ -137,6 +144,7 @@ export async function surveyRoot(
     }
   }
 
+  result.scanned = seen;
   result.topLevel.sort();
   result.executables.sort();
   return result;

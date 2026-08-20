@@ -86,8 +86,10 @@ test("a hostile hostname cannot escape the report directory", () => {
     allWritable,
   );
   const name = path.basename(target?.reportPath ?? "");
-  // The property that matters: the file lands where it was meant to.
-  assert.equal(path.dirname(target?.reportPath ?? ""), "/media/usb");
+  // The property that matters: the file lands where it was meant to. Compared
+  // through path.join so the expectation is separator-correct on the host
+  // running the test rather than assuming POSIX.
+  assert.equal(target?.reportPath, path.join("/media/usb", name));
   assert.ok(!name.includes("/") && !name.includes("\\"), `separator survived: ${name}`);
   assert.ok(!name.includes(".."), `dot run survived: ${name}`);
   assert.equal(name, "ELI-Launcher-etc-pwn-2026-08-19_15-04-05-report.md");

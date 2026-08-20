@@ -578,7 +578,16 @@ async function writeFieldReport(
     // Survey the places this deployment says its programs live. When a
     // configured path turns out to be wrong, the survey is what shows the right
     // one without another trip to the machine.
+    // The directory a missing command should have been in matters more than the
+    // whole workspace: listing its siblings shows what IS deployed there. A
+    // broad walk can be cut short by its deadline before ever reaching it, so
+    // these are surveyed in their own right rather than relied on being hit.
+    const missingCommandFolders = findings
+      .filter((finding) => finding.status === "missing" && finding.resolvedCommand)
+      .map((finding) => path.win32.dirname(path.win32.dirname(finding.resolvedCommand as string)));
+
     const surveyRootCandidates = [
+      ...missingCommandFolders,
       loaded.context.local.workspaceRoot ?? "",
       loaded.context.local.cssGuiRoot ?? "",
       ...loaded.context.security.allowedCommandRoots,

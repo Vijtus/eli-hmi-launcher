@@ -1115,6 +1115,35 @@ function normalizeForCompare(value: string, platform: NodeJS.Platform = process.
   return platform === "win32" ? normalized.replace(/\//g, "\\").toLowerCase() : normalized;
 }
 
+// Symlink resolution is only meaningful on the host that owns the filesystem.
+// Checking a Windows deployment's allow-list from Linux must not push a
+// `D:\...` path through POSIX path functions, which would resolve it against
+// the working directory and produce nonsense.
+function resolveThroughExistingAncestor(target: string, platform: NodeJS.Platform): string {
+  if (platform !== process.platform) {
+    return target;
+  }
+  const segments: string[] = [];
+  let current = target;
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      if (existsSync(current)) {
+        const resolved = realpathSync(current);
+        return segments.length > 0 ? path.join(resolved, ...segments.reverse()) : resolved;
+      }
+    } catch {
+      return target;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return target; // Reached the filesystem root without finding anything.
+    }
+    segments.push(path.basename(current));
+    current = parent;
+  }
+  return target;
+}
+
 // Enforced at LAUNCH time (authoritative, uses the exact command that will be
 // spawned on the current platform). Throws on violation.
 export function assertCommandAllowed(
@@ -1143,26 +1172,26 @@ export function assertCommandAllowed(
     return; // No allow-list configured (a startup warning is emitted separately).
   }
 
-  // Resolve symlinks where the file exists so a symlink cannot escape a root.
-  let candidate = absolute;
-  try {
-    if (existsSync(absolute)) {
-      candidate = realpathSync(absolute);
-    }
-  } catch {
-    candidate = absolute;
-  }
+  // Resolve symlinks so a symlink cannot escape a root. When the command itself
+  // does not exist — the ordinary case for a machine that simply has not got it
+  // installed — resolve the nearest ancestor that DOES and re-append the rest.
+  // Without this, a root under a symlinked parent (macOS /var -> /private/var)
+  // resolves while the absent command cannot, and a plainly missing file is
+  // reported as a security refusal, sending the reader after the wrong problem.
+  const candidate = resolveThroughExistingAncestor(absolute, platform);
 
   const separator = platform === "win32" ? "\\" : path.sep;
   const normalizedCandidate = normalizeForCompare(candidate, platform);
   const allowed = policy.allowedCommandRoots.some((root) => {
     let rootResolved = root;
-    try {
-      if (existsSync(root)) {
-        rootResolved = realpathSync(root);
+    if (platform === process.platform) {
+      try {
+        if (existsSync(root)) {
+          rootResolved = realpathSync(root);
+        }
+      } catch {
+        rootResolved = root;
       }
-    } catch {
-      rootResolved = root;
     }
     const normalizedRoot = normalizeForCompare(rootResolved, platform);
     const withSep = normalizedRoot.endsWith(separator) ? normalizedRoot : normalizedRoot + separator;

@@ -21,6 +21,14 @@ eli-hmi-config-main.zip
 
 # Site material dropped in for analysis. This repo is public; these are not.
 Outputs/
-Deployment.zip
-Launcher.zip
+*.zip
+*.jpg
 *.JPG
+*.jpeg
+*.png
+!build/icon.png
+!build/icons/*.png
+!reference-screenshots/*.png
+*.pdf
+ELI-Launcher-*.md
+ELI-Launcher-*.jsonl
