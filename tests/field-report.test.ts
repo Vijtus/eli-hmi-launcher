@@ -58,16 +58,19 @@ test("an explicit directory beats the portable location", () => {
 test("a read-only stick falls back to the Desktop", () => {
   const target = resolveFieldReportTarget(
     environment({ [PORTABLE_DIR_ENV]: "/media/usb/ELI" }),
-    (directory) => !directory.startsWith("/media/usb/ELI"),
+    (directory) => !path.resolve(directory).startsWith(path.resolve("/media/usb/ELI")),
   );
   assert.equal(target?.origin, "desktop");
   assert.equal(target?.directory, path.join("/home/op/Desktop", path.basename(target?.directory ?? "")));
 });
 
 test("an unwritable Desktop falls back to userData", () => {
+  // path.join normalises separators to the host's, so the predicate has to
+  // compare the same way rather than against a POSIX literal.
+  const userData = path.join("/home/op/.config/eli-hmi-launcher");
   const target = resolveFieldReportTarget(
     environment({ [FIELD_REPORT_ENABLE_ENV]: "1" }),
-    (directory) => directory.startsWith("/home/op/.config/eli-hmi-launcher"),
+    (directory) => path.resolve(directory).startsWith(path.resolve(userData)),
   );
   assert.equal(target?.origin, "userData");
 });

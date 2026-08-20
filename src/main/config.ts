@@ -1183,16 +1183,13 @@ export function assertCommandAllowed(
   const separator = platform === "win32" ? "\\" : path.sep;
   const normalizedCandidate = normalizeForCompare(candidate, platform);
   const allowed = policy.allowedCommandRoots.some((root) => {
-    let rootResolved = root;
-    if (platform === process.platform) {
-      try {
-        if (existsSync(root)) {
-          rootResolved = realpathSync(root);
-        }
-      } catch {
-        rootResolved = root;
-      }
-    }
+    // Resolved exactly like the candidate. Anything less is an asymmetry: a
+    // command under a symlinked parent resolves to the real path while a root
+    // that does not itself exist yet keeps the symlinked one, and the two stop
+    // sharing a prefix — refusing a launch that is plainly inside its allowed
+    // root. macOS makes this routine, since /var is a symlink to /private/var
+    // and every temporary directory sits under it.
+    const rootResolved = resolveThroughExistingAncestor(root, platform);
     const normalizedRoot = normalizeForCompare(rootResolved, platform);
     const withSep = normalizedRoot.endsWith(separator) ? normalizedRoot : normalizedRoot + separator;
     return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(withSep);
