@@ -429,7 +429,11 @@ test("the config repo cannot alter the security policy", () => {
         local: { ...(resolve(t).overlay.local as object) },
       },
     });
-    assert.deepEqual(parsed.context.security.allowedCommandRoots, ["/opt/eli/approved"]);
+    // config.ts normalises roots with path.normalize, so the separator is
+    // platform-native by design.
+    assert.deepEqual(parsed.context.security.allowedCommandRoots, [
+      path.normalize("/opt/eli/approved"),
+    ]);
     assert.equal(parsed.context.security.allowBareCommands, false);
   } finally {
     rmSync(t.root, { recursive: true, force: true });

@@ -13,3 +13,26 @@ dist/
 .local/demo-captures/
 __pycache__/
 .pytest_cache/
+release/
+
+# Site catalog snapshot: eli-hmi-config is private, this repo is public.
+config-repo/launcher/
+eli-hmi-config-main.zip
+
+# Site material dropped in for analysis. This repo is public; these are not.
+Outputs/
+*.zip
+*.jpg
+*.JPG
+*.jpeg
+*.png
+!build/icon.png
+!build/icons/*.png
+!reference-screenshots/*.png
+*.pdf
+ELI-Launcher-*.md
+ELI-Launcher-*.jsonl
+# Run folders: the files inside are named report.md / events.jsonl, so a
+# filename pattern does not catch them.
+ELI-Launcher-*/
+Output/

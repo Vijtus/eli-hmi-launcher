@@ -9,9 +9,16 @@ permissions:
   contents: read
 
 jobs:
+  # The portable checks. Running them on all three OSes is what makes
+  # "works anywhere" a checked fact rather than a claim.
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,3 +27,43 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+
+  # Prove the SHIPPED artifact works, not just the source tree: packaging is
+  # what changes where ${APP_ROOT} points and whether the spawned command
+  # exists on disk, so a green `npm test` says nothing about it.
+  packaged-smoke:
+    name: packaged smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run pack
+      - name: Smoke-test the packaged build
+        run: npm run smoke:packaged
+        if: runner.os != 'Linux'
+      - name: Smoke-test the packaged build (headless)
+        run: xvfb-run -a npm run smoke:packaged
+        if: runner.os == 'Linux'
+
+  # The Phoebus wrapper self-test is bash plus Linux-only tooling, so it stays
+  # its own job instead of blocking the portable matrix above.
+  linux-extras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run smoke:phoebus-local

@@ -21,7 +21,7 @@
 //   `labview-dev` is confirmed against real data in eli-eric/eli-hmi-config.
 //   `labview-epics`, `css`, and `web` are EMPTY in that repo, so their item keys
 //   are an assumption chosen for symmetry with the launcher's existing target
-//   types (CONFIG_SCHEMA.md > Targets). They are documented in README.md and
+//   types (../../docs/CONFIG_SCHEMA.md > Targets). They are documented in README.md and
 //   flagged for maintainer confirmation. An unknown group is skipped with a
 //   warning rather than failing, so a future group cannot stop a control room.
 
@@ -173,7 +173,7 @@ function adaptCss(item: RawObject, index: number, filePath: string): RawObject {
   if (!resource && !layout) {
     throw new Error(
       `${where} must set \`resource\` or \`layout: true\`. ` +
-        `Remedy: give the Phoebus entry something to open — see CONFIG_SCHEMA.md > Targets > phoebus.`,
+        `Remedy: give the Phoebus entry something to open — see ../../docs/CONFIG_SCHEMA.md > Targets > phoebus.`,
     );
   }
   return {

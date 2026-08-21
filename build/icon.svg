@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- ELI HMI Launcher mark.
+       Deliberately monochrome: the app itself uses a fixed high-contrast
+       black-and-white palette and does not follow the OS colour scheme, so the
+       icon matches. Glyphs are geometry, not text, so the committed SVG renders
+       identically without depending on any installed font. -->
+  <rect width="1024" height="1024" rx="208" fill="#000000"/>
+  <rect x="56" y="56" width="912" height="912" rx="156" fill="none" stroke="#ffffff" stroke-width="40"/>
+  <g fill="#ffffff">
+    <!-- L -->
+    <rect x="252" y="300" width="86" height="424"/>
+    <rect x="252" y="638" width="238" height="86"/>
+    <!-- 4: diagonal, crossbar, stem -->
+    <polygon points="668,300 668,436 590,560 512,560"/>
+    <rect x="512" y="560" width="260" height="86"/>
+    <rect x="686" y="300" width="86" height="424"/>
+  </g>
+</svg>

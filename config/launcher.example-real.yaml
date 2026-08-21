@@ -8,7 +8,7 @@ local:
   zoneSymbol: '<zone-symbol>'
   phoebus:
     executable: '<phoebus-executable>'
-    serverPort: 4918 # confirm site reservation; see BLOCKERS.md
+    serverPort: 4918 # confirm site reservation; see ../docs/BLOCKERS.md
     settingsFile: '<phoebus-settings-file>'
     # layoutFile: '<site-created-alarm-layout-memento>' # required by layout: true
     startupTimeoutMs: 30000
@@ -31,7 +31,7 @@ local:
 
 # Launch restrictions are enforced in the Electron main process before spawn.
 # The intended LabVIEW rule and the signal that denotes write mode remain
-# unresolved in BLOCKERS.md. Until maintainers answer, use the restrictive
+# unresolved in ../docs/BLOCKERS.md. Until maintainers answer, use the restrictive
 # single-instance default and leave launchMode unknown rather than guessing.
 access:
   platforms:
@@ -44,7 +44,7 @@ access:
 
 # ===========================================================================
 # DEPLOYMENT TEMPLATE — replace every path/URL below with real L4 values.
-# This file is a copy target, not a runnable mock. See CONFIG_SCHEMA.md.
+# This file is a copy target, not a runnable mock. See ../docs/CONFIG_SCHEMA.md.
 #
 # SECURITY MODEL (read this):
 #   This config file is a trust root. Any `process` target runs with the
@@ -125,7 +125,7 @@ entries:
       app: '<app-name-from-site-phoebus-list>'
 
   # Alarm layout placeholder. Leave commented until maintainers provide the
-  # site-created memento and internal app names recorded in BLOCKERS.md.
+  # site-created memento and internal app names recorded in ../docs/BLOCKERS.md.
   # - id: example-phoebus-alarm-layout
   #   name: '<alarm layout name>'
   #   technology: --

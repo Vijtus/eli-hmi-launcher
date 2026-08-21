@@ -38,6 +38,9 @@ export const ENV = {
   subpath: "ELI_LAUNCHER_CONFIG_REPO_SUBPATH",
   cacheDir: "ELI_LAUNCHER_CONFIG_CACHE_DIR",
   hostname: "ELI_LAUNCHER_CONFIG_HOSTNAME",
+  // A checked-out config tree on disk instead of a git remote. Lets a build ship
+  // the catalog with it, for machines with no route to the private repo.
+  dir: "ELI_LAUNCHER_CONFIG_REPO_DIR",
   timeoutMs: "ELI_LAUNCHER_CONFIG_FETCH_TIMEOUT_MS",
   offline: "ELI_LAUNCHER_CONFIG_OFFLINE",
 } as const;
@@ -48,6 +51,9 @@ export type EnvLike = Record<string, string | undefined>;
 
 export type DynamicConfigOptions = {
   url: string;
+  // When set, the catalog is read from this already-checked-out directory and
+  // no git operation happens at all.
+  localDir?: string | undefined;
   token?: string | undefined;
   username?: string | undefined;
   ref?: string | undefined;
@@ -111,14 +117,19 @@ export function defaultCacheDir(): string {
 // In that case the launcher behaves exactly as it did before this feature.
 export function readDynamicConfigEnv(
   env: EnvLike,
-  defaults: { cacheDir?: string } = {},
+  defaults: { cacheDir?: string; localDir?: string } = {},
 ): DynamicConfigOptions | undefined {
   const url = text(env, ENV.url);
-  if (!url) {
+  // An explicit directory wins over a bundled one, and either removes the need
+  // for a URL: there is nothing to clone.
+  const localDir = text(env, ENV.dir) ?? defaults.localDir;
+  if (!url && !localDir) {
     return undefined;
   }
   return {
-    url,
+    // The URL is only provenance when reading a directory; nothing fetches it.
+    url: url ?? `dir:${localDir}`,
+    ...(localDir ? { localDir } : {}),
     token: text(env, ENV.token),
     username: text(env, ENV.username),
     ref: text(env, ENV.ref),
@@ -221,6 +232,22 @@ export async function resolveDynamicConfig(
   options: DynamicConfigOptions,
   deps: ConfigRepoDeps,
 ): Promise<DynamicConfigResult> {
+  // A directory is already a checkout: skip git entirely rather than pretending
+  // to fetch. Provenance says so plainly so a report can never imply the
+  // catalog was refreshed from a remote when it was read off the disk.
+  if (options.localDir) {
+    return resolveFromCheckout(
+      {
+        repoDir: options.localDir,
+        ref: "(bundled)",
+        commitSha: "(bundled)",
+        fetchedAt: new Date().toISOString(),
+        source: "fresh",
+        warnings: [],
+      },
+      options,
+    );
+  }
   const repo = await ensureConfigRepo(
     {
       url: options.url,

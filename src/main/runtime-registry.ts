@@ -6,7 +6,12 @@ import type {
   RuntimeStatus,
 } from "../shared/types";
 import type { SpawnReceipt } from "./process-launcher";
-import { inspectProcess, type ProcessInspector, type ProcessObservation } from "./process-inspector";
+import {
+  inspectProcess,
+  inspectProcesses,
+  type ProcessInspector,
+  type ProcessObservation,
+} from "./process-inspector";
 import { probeTcpPort } from "./phoebus-server";
 
 export const DEFAULT_RUNTIME_RECONCILE_INTERVAL_MS = 5_000;
@@ -74,6 +79,8 @@ export type RegisterPhoebusInput = {
 export type RuntimeRegistryOptions = {
   reconcileIntervalMs?: number;
   inspectProcess?: ProcessInspector;
+  /** Batch inspector. Injectable alongside inspectProcess so tests can drive both. */
+  inspectProcesses?: (pids: number[]) => Promise<Map<number, ProcessObservation>>;
   probePhoebusPort?: (port: number) => Promise<boolean>;
   clock?: RegistryClock;
   scheduler?: RegistryScheduler;
@@ -107,6 +114,7 @@ export class RuntimeRegistry {
   readonly reconcileIntervalMs: number;
 
   private readonly inspect: ProcessInspector;
+  private readonly inspectMany: (pids: number[]) => Promise<Map<number, ProcessObservation>>;
   private readonly probePort: (port: number) => Promise<boolean>;
   private readonly clock: RegistryClock;
   private readonly scheduler: RegistryScheduler;
@@ -127,6 +135,14 @@ export class RuntimeRegistry {
       throw new Error("Runtime reconciliation interval must be a positive integer.");
     }
     this.inspect = options.inspectProcess ?? inspectProcess;
+    // When only a single-process inspector is injected, fan out to it so a test
+    // that stubs one behaviour does not silently bypass the other.
+    this.inspectMany =
+      options.inspectProcesses ??
+      (options.inspectProcess
+        ? async (pids) =>
+            new Map(await Promise.all(pids.map(async (pid) => [pid, await this.inspect(pid)] as const)))
+        : (pids) => inspectProcesses(pids));
     this.probePort = options.probePhoebusPort ?? ((port) => probeTcpPort(port));
     this.clock = options.clock ?? { now: Date.now };
     this.scheduler = options.scheduler ?? defaultScheduler;
@@ -244,12 +260,26 @@ export class RuntimeRegistry {
 
   private async reconcileExclusive(): Promise<void> {
     const now = this.clock.now();
+
+    // One inspection covering every tracked process. Asking per-process meant a
+    // subprocess per launched GUI on every cycle, which is exactly the load
+    // that made the answers time out and the rows read `unknown`.
+    const live: number[] = [];
+    for (const records of this.processesByEntry.values()) {
+      for (const record of records) {
+        if (record.state !== "stopped") {
+          live.push(record.pid);
+        }
+      }
+    }
+    const observations = await this.safeInspectMany(live);
+
     for (const records of this.processesByEntry.values()) {
       for (const record of records) {
         if (record.state === "stopped") {
           continue;
         }
-        const observation = await this.safeInspect(record.pid);
+        const observation = observations.get(record.pid) ?? (await this.safeInspect(record.pid));
         if (!observation.alive) {
           record.state = "stopped";
           record.reason = observation.reason ?? "Process is no longer running.";
@@ -386,6 +416,20 @@ export class RuntimeRegistry {
       reconcileIntervalMs: this.reconcileIntervalMs,
       items,
     };
+  }
+
+  private async safeInspectMany(pids: number[]): Promise<Map<number, ProcessObservation>> {
+    if (pids.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.inspectMany(pids);
+    } catch (error) {
+      this.onError?.(error);
+      // An inspection failure must never be mistaken for "everything stopped";
+      // returning nothing makes each record fall back to its own check.
+      return new Map();
+    }
   }
 
   private async safeInspect(pid: number): Promise<ProcessObservation> {

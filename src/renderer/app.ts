@@ -43,6 +43,10 @@ const statusDismiss = document.getElementById("status-dismiss") as HTMLButtonEle
 const rowsElement = document.getElementById("launcher-rows") as HTMLTableSectionElement;
 const rowCountElement = document.getElementById("row-count") as HTMLParagraphElement;
 const catalogStalenessElement = document.getElementById("catalog-staleness") as HTMLParagraphElement;
+const fieldReportElement = document.getElementById("field-report-banner") as HTMLParagraphElement;
+const configLocationElement = document.getElementById("config-location") as HTMLParagraphElement;
+const configLocationText = document.getElementById("config-location-text") as HTMLSpanElement;
+const configLocationOpen = document.getElementById("config-location-open") as HTMLButtonElement;
 
 const technologyFilter = createCombobox({
   mount: technologyMount,
@@ -313,6 +317,46 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// Only a portable/recording run has a report location. Optional on the bridge
+// so an older preload cannot break startup.
+// "Where is the yaml?" is the most common question about this app, so the
+// answer is on screen rather than in a log or a document.
+async function showConfigLocation(): Promise<void> {
+  if (!window.launcherApi?.getConfigLocation) {
+    return;
+  }
+  try {
+    const location = await window.launcherApi.getConfigLocation();
+    if (!location) {
+      return;
+    }
+    configLocationText.textContent = location.editable
+      ? `CONFIG: ${location.path}`
+      : `CONFIG (built in, not editable): ${location.path}`;
+    configLocationOpen.hidden = !location.editable;
+    configLocationOpen.addEventListener("click", () => void window.launcherApi.revealConfig?.());
+    configLocationElement.hidden = false;
+  } catch {
+    // The launcher must stay usable even if it cannot describe its own config.
+  }
+}
+
+async function showFieldReportBanner(): Promise<void> {
+  if (!window.launcherApi?.getFieldReport) {
+    return;
+  }
+  try {
+    const report = await window.launcherApi.getFieldReport();
+    if (!report) {
+      return;
+    }
+    fieldReportElement.textContent = `RECORDING DIAGNOSTICS \u2192 ${report.reportPath}`;
+    fieldReportElement.hidden = false;
+  } catch {
+    // A missing banner must never stop the launcher being usable.
+  }
+}
+
 async function initialize(): Promise<void> {
   try {
     if (
@@ -331,6 +375,8 @@ async function initialize(): Promise<void> {
     setStatus("");
     applyConfig(config);
     applyRuntimeSnapshot(runtime);
+    await showConfigLocation();
+    await showFieldReportBanner();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Config load failed: ${message}`, true);

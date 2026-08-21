@@ -16,11 +16,13 @@ export type NativeLaunchResult = {
   command: string;
   args: string[];
   receipt: SpawnReceipt;
+  captureTo?: string | undefined;
 };
 
 export async function launchMaterializedProcess(
   materialized: MaterializedProcess,
   context: LaunchContext,
+  captureTo?: string,
 ): Promise<NativeLaunchResult> {
   const args = materialized.args ?? [];
   try {
@@ -45,8 +47,10 @@ export async function launchMaterializedProcess(
         args,
         materialized.cwd,
         materialized.env,
+        undefined,
+        captureTo,
       );
-      return { command: materialized.command, args, receipt };
+      return { command: materialized.command, args, receipt, captureTo };
     } catch (error) {
       const code = launchErrorCode(error);
       if (code === "ENOENT" || code === "EACCES" || code === "EPERM") {

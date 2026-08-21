@@ -1,5 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { access } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
+import YAML from "yaml";
+import os from "node:os";
 import path from "node:path";
 import {
   loadConfigFromFile,
@@ -8,6 +10,17 @@ import {
   type LaunchContext,
   type ParsedConfig,
 } from "./config";
+import { buildConfigCandidates, resolveAppRoot, type AppLocation } from "./app-paths";
+import {
+  defaultDesktopDir,
+  renderFieldReport,
+  type SessionLaunch,
+  resolveFieldReportTarget,
+  startFieldEventLog,
+  type FieldReportTarget,
+} from "./field-report";
+import { preflightConfig, type PreflightFinding } from "./preflight";
+import { surveyRoots, type SurveyResult } from "./workspace-survey";
 import { getLogFilePath, initLogger, logEvent, logLaunch } from "./logger";
 import { defaultDeps } from "./config-repo";
 import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "./dynamic-config";
@@ -24,6 +37,7 @@ import {
   materializeLabviewEpicsTarget,
 } from "./labview-targets";
 import { launchMaterializedProcess, type NativeLaunchResult } from "./native-launcher";
+import { watchLaunch } from "./launch-watch";
 import { PhoebusServerManager } from "./phoebus-server";
 import { assertPhoebusLayoutApplied, materializePhoebusTarget } from "./phoebus-targets";
 import {
@@ -50,6 +64,8 @@ import type {
   LaunchAccessMode,
   ProcessLaunchTarget,
   RuntimeSnapshot,
+  FieldReportInfo,
+  ConfigLocation,
 } from "../shared/types";
 
 const DEFAULT_APP_NAME = "L4 Launcher";
@@ -61,6 +77,10 @@ let hmiApi: HmiApiAdapter = new NoopHmiApiAdapter();
 let lifecycleCoordinator: HmiLifecycleCoordinator | undefined;
 const entryLaunchGate = new EntryLaunchGate();
 let lifecycleShutdownStarted = false;
+// The config file this run is using, surfaced to the renderer.
+let activeConfigPath: string | undefined;
+// False when it lives inside the packaged app, where editing is pointless.
+let activeConfigEditable = false;
 let lastLifecycleHealthStatus: string | undefined;
 
 function emptyRuntimeSnapshot(): RuntimeSnapshot {
@@ -120,29 +140,22 @@ function getElectronResourcesPath(): string | undefined {
   return typeof electronProcess.resourcesPath === "string" ? electronProcess.resourcesPath : undefined;
 }
 
-function uniquePaths(values: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of values) {
-    if (!value || seen.has(value)) {
-      continue;
-    }
-    seen.add(value);
-    result.push(value);
-  }
-  return result;
+// Single source of truth for "where am I installed", shared by the config
+// candidates and by `${APP_ROOT}` expansion inside config files.
+function currentAppLocation(): AppLocation {
+  return {
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    resourcesPath: getElectronResourcesPath(),
+    executableDir: path.dirname(process.execPath),
+    cwd: process.cwd(),
+    userDataDir: app.getPath("userData"),
+    portableDir: process.env["PORTABLE_EXECUTABLE_DIR"],
+  };
 }
 
 function getDefaultConfigCandidates(): string[] {
-  const appRoot = app.getAppPath();
-  const executableDir = path.dirname(process.execPath);
-  const resourcesPath = getElectronResourcesPath();
-  return uniquePaths([
-    path.join(process.cwd(), "config", "launcher.yaml"),
-    path.join(appRoot, "config", "launcher.yaml"),
-    resourcesPath ? path.join(resourcesPath, "config", "launcher.yaml") : "",
-    path.join(executableDir, "config", "launcher.yaml"),
-  ]);
+  return buildConfigCandidates(currentAppLocation());
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -249,9 +262,10 @@ function showConfigErrorWindow(message: string, configPath: string | undefined):
 async function launchProcessTarget(
   target: ProcessLaunchTarget,
   context: LaunchContext,
+  captureTo?: string,
 ): Promise<NativeLaunchResult> {
   const materialized = materializeProcessTarget(target, context);
-  return await launchMaterializedProcess(materialized, context);
+  return await launchMaterializedProcess(materialized, context, captureTo);
 }
 
 async function launchFolderTarget(folderPath: string, context: LaunchContext): Promise<void> {
@@ -288,7 +302,9 @@ async function launchTarget(
     return {};
   }
   if (target.kind === "process") {
-    const result = await launchProcessTarget(target, context);
+    const captureTo = captureFileFor(itemId);
+    const result = await launchProcessTarget(target, context, captureTo);
+    watchAndAmend(itemId, result.receipt.pid, captureTo);
     await runtimeRegistry?.registerProcess({
       entryId: itemId,
       kind: "process",
@@ -301,7 +317,9 @@ async function launchTarget(
   }
   if (target.kind === "labview-dev") {
     const materialized = materializeLabviewDeveloperTarget(target, context);
-    const result = await launchMaterializedProcess(materialized, context);
+    const captureTo = captureFileFor(itemId);
+    const result = await launchMaterializedProcess(materialized, context, captureTo);
+    watchAndAmend(itemId, result.receipt.pid, captureTo);
     await runtimeRegistry?.registerProcess({
       entryId: itemId,
       kind: "labview-dev",
@@ -314,7 +332,9 @@ async function launchTarget(
   }
   if (target.kind === "labview-epics") {
     const materialized = materializeLabviewEpicsTarget(target, context);
-    const result = await launchMaterializedProcess(materialized, context);
+    const captureTo = captureFileFor(itemId);
+    const result = await launchMaterializedProcess(materialized, context, captureTo);
+    watchAndAmend(itemId, result.receipt.pid, captureTo);
     await runtimeRegistry?.registerProcess({
       entryId: itemId,
       kind: "labview-epics",
@@ -368,6 +388,24 @@ async function launchTarget(
 
 function registerIpcHandlers(): void {
   ipcMain.handle("launcher:get-config", async (): Promise<LauncherConfig> => publicConfig());
+  // Recording is visible by design: the operator must be able to find the file
+  // to send it back, and a shared control-room machine should never be writing
+  // diagnostics about itself without saying so.
+  // Which file is actually in charge. "Where is the yaml?" should be answerable
+  // from the window, not by reading documentation or a log.
+  ipcMain.handle("launcher:get-config-location", async (): Promise<ConfigLocation | null> =>
+    activeConfigPath ? { path: activeConfigPath, editable: activeConfigEditable } : null,
+  );
+  ipcMain.handle("launcher:reveal-config", async (): Promise<void> => {
+    if (activeConfigPath) {
+      shell.showItemInFolder(activeConfigPath);
+    }
+  });
+  ipcMain.handle("launcher:get-field-report", async (): Promise<FieldReportInfo | null> =>
+    fieldReport
+      ? { directory: fieldReport.directory, reportPath: fieldReport.reportPath }
+      : null,
+  );
   ipcMain.handle(
     "launcher:get-runtime-states",
     async (): Promise<RuntimeSnapshot> => runtimeSnapshot(),
@@ -464,6 +502,7 @@ function registerIpcHandlers(): void {
           id: itemId,
           focused: policyResult.focused,
         });
+        recordLaunch({ id: itemId, label, ok: false, error: unperformed, at: nowIso });
         return {
           ok: false,
           id: itemId,
@@ -476,6 +515,14 @@ function registerIpcHandlers(): void {
       const diagnostics = policyResult.value ?? {};
       const durationMs = Date.now() - startedAt;
       logLaunch({ id: itemId, label, target, ...diagnostics, ok: true, durationMs });
+      recordLaunch({
+        id: itemId,
+        label,
+        ok: true,
+        command: diagnostics.resolvedCommand,
+        args: diagnostics.resolvedArgs,
+        at: nowIso,
+      });
       return { ok: true, id: itemId, label, kind: target.kind, launchedAt: nowIso };
     } catch (error) {
       const durationMs = Date.now() - startedAt;
@@ -489,6 +536,15 @@ function registerIpcHandlers(): void {
         ok: false,
         error: errorMessage,
         durationMs,
+      });
+      recordLaunch({
+        id: itemId,
+        label,
+        ok: false,
+        command: diagnostics?.resolvedCommand,
+        args: diagnostics?.resolvedArgs,
+        error: errorMessage,
+        at: nowIso,
       });
       return { ok: false, id: itemId, label, kind: target.kind, error: errorMessage, launchedAt: nowIso };
     }
@@ -507,45 +563,313 @@ function registerIpcHandlers(): void {
 // as an overlay, and `loaded` is only assigned once a complete, validated
 // ParsedConfig exists. A failure at any step therefore lands in the same error
 // window as any other config failure, never a half-configured launcher.
-async function resolveGitConfig(): Promise<DynamicConfigResult | undefined> {
+// Shipped as extraResources beside app.asar. Used only when no repo URL is
+// configured, so a machine that can reach the real repo always gets the live
+// catalog and this snapshot never shadows it.
+async function bundledConfigRepoDir(): Promise<string | undefined> {
+  const candidate = path.join(resolveAppRoot(currentAppLocation()), "config-repo");
+  return (await pathExists(path.join(candidate, "launcher"))) ? candidate : undefined;
+}
+
+// True when the resolved config file supplies its own `entries:`. A file that
+// defines the table is a statement of intent, and a catalog that merely shipped
+// with the build has no business adding rows to it.
+async function configDeclaresEntries(configPath: string): Promise<boolean> {
+  try {
+    const parsed = YAML.parse(await readFile(configPath, "utf8")) as unknown;
+    const entries = (parsed as { entries?: unknown } | null)?.entries;
+    return Array.isArray(entries) && entries.length > 0;
+  } catch {
+    // Unreadable or malformed: let the normal loader report it properly.
+    return false;
+  }
+}
+
+async function resolveGitConfig(localOwnsCatalog: boolean): Promise<DynamicConfigResult | undefined> {
+  const bundled = await bundledConfigRepoDir();
   const options = readDynamicConfigEnv(process.env, {
     cacheDir: path.join(app.getPath("userData"), "config-repo"),
+    ...(bundled ? { localDir: bundled } : {}),
   });
   if (!options) {
     return undefined;
   }
+  // A catalog the operator explicitly configured is a hard requirement: if it
+  // cannot be resolved, running on some other configuration would be worse than
+  // not running. A catalog that merely shipped with the build is a convenience,
+  // and letting it strand a machine it has never heard of — even one with a
+  // perfectly good local config, or an explicit ELI_LAUNCHER_CONFIG — turns a
+  // fallback into a single point of failure.
+  const isBundledOnly =
+    !process.env["ELI_LAUNCHER_CONFIG_REPO_URL"] &&
+    !process.env["ELI_LAUNCHER_CONFIG_REPO_DIR"] &&
+    Boolean(bundled);
+
+  // Both sources firing at once is how one catalog of seven became a table of
+  // fourteen: the ids differ, so nothing de-duplicates them, and the shipped
+  // half arrives without the Technology and Section a zone file cannot express.
+  if (isBundledOnly && localOwnsCatalog) {
+    logEvent("info", "Local config defines its own entries; the bundled catalog is not applied", {});
+    return undefined;
+  }
+
   try {
     return await resolveDynamicConfig(options, await defaultDeps());
   } catch (error) {
+    const message = redactError(error, options.token, options.username);
+    if (isBundledOnly) {
+      logEvent("warn", "Bundled catalog does not cover this machine; continuing without it", {
+        error: message,
+      });
+      return undefined;
+    }
     // Redact before the message can reach a log line or the error window.
-    throw new Error(redactError(error, options.token, options.username));
+    throw new Error(message);
+  }
+}
+
+// Set when this run is recording next to a portable executable; surfaced to the
+// renderer so the operator can see where the file is.
+let fieldReport: FieldReportTarget | undefined;
+// Every launch the operator attempted, so the readable report can say what
+// actually happened rather than only what could have.
+const sessionLaunches: SessionLaunch[] = [];
+// Kept so the report can be rewritten on exit with the session included.
+let lastReportContext:
+  | {
+      configPath: string | undefined;
+      gitConfig: DynamicConfigResult | undefined;
+      findings: PreflightFinding[];
+      survey: SurveyResult[];
+    }
+  | undefined;
+
+function recordLaunch(entry: SessionLaunch): void {
+  sessionLaunches.push(entry);
+}
+
+// Where a launched program's own output is captured, so a LabVIEW error dialog
+// leaves something readable behind. Only active for a recording run.
+function captureFileFor(itemId: string): string | undefined {
+  if (!fieldReport) {
+    return undefined;
+  }
+  const safeId = itemId.replace(/[^A-Za-z0-9._-]+/g, "-");
+  return path.join(fieldReport.directory, `launch-${safeId}.log`);
+}
+
+// Follows a launched process for a few seconds and amends its session record
+// with what became of it. Never awaited by the launch path: the operator gets
+// their window immediately and the report is enriched behind them.
+const pendingWatches = new Set<Promise<void>>();
+
+function watchAndAmend(itemId: string, pid: number | undefined, captureTo: string | undefined): void {
+  if (pid === undefined) {
+    return;
+  }
+  const watching = watchLaunch(pid, captureTo)
+    .then((watched) => {
+      const entry = [...sessionLaunches].reverse().find((launch) => launch.id === itemId && launch.ok);
+      if (!entry) {
+        return;
+      }
+      entry.outcome = watched.outcome;
+      entry.observedForMs = watched.observedForMs;
+      if (watched.output) {
+        entry.output = watched.output;
+      }
+      logEvent(watched.outcome === "exited-early" ? "warn" : "info", "Launch outcome observed", {
+        id: itemId,
+        outcome: watched.outcome,
+        observedForMs: watched.observedForMs,
+      });
+    })
+    .catch(() => undefined);
+  pendingWatches.add(watching);
+  void watching.finally(() => pendingWatches.delete(watching));
+}
+
+// Closing the window seconds after the last click is the normal case, so the
+// report would otherwise miss exactly the outcomes it was opened to capture.
+// Bounded so a stuck watch cannot hold the application open.
+async function settlePendingWatches(limitMs = 12_000): Promise<void> {
+  if (pendingWatches.size === 0) {
+    return;
+  }
+  logEvent("info", "Waiting for launch outcomes before writing the report", {
+    pending: pendingWatches.size,
+  });
+  await Promise.race([
+    Promise.allSettled([...pendingWatches]),
+    new Promise((resolve) => setTimeout(resolve, limitMs)),
+  ]);
+}
+
+function startFieldReport(): void {
+  fieldReport = resolveFieldReportTarget({
+    env: process.env,
+    hostname: os.hostname(),
+    desktopDir: defaultDesktopDir(app.getPath("home")),
+    userDataDir: app.getPath("userData"),
+    now: new Date(),
+  });
+  if (fieldReport) {
+    // Start the event log before anything else is logged, so the file holds the
+    // whole run including config resolution failures.
+    startFieldEventLog(fieldReport.eventLogPath);
+  }
+}
+
+// Written once, after the catalog is known. A failure here must never stop the
+// launcher: the report is a diagnostic aid, not a precondition for operating.
+async function writeFieldReport(
+  configPath: string | undefined,
+  gitConfig: DynamicConfigResult | undefined,
+  configRepoError: string | undefined,
+): Promise<void> {
+  if (!fieldReport || !loaded) {
+    return;
+  }
+  try {
+    const findings = await preflightConfig(loaded);
+    // Survey the places this deployment says its programs live. When a
+    // configured path turns out to be wrong, the survey is what shows the right
+    // one without another trip to the machine.
+    // The directory a missing command should have been in matters more than the
+    // whole workspace: listing its siblings shows what IS deployed there. A
+    // broad walk can be cut short by its deadline before ever reaching it, so
+    // these are surveyed in their own right rather than relied on being hit.
+    const missingCommandFolders = findings
+      .filter((finding) => finding.status === "missing" && finding.resolvedCommand)
+      .map((finding) => path.win32.dirname(path.win32.dirname(finding.resolvedCommand as string)));
+
+    const surveyRootCandidates = [
+      ...missingCommandFolders,
+      loaded.context.local.workspaceRoot ?? "",
+      loaded.context.local.cssGuiRoot ?? "",
+      ...loaded.context.security.allowedCommandRoots,
+    ].filter((root) => root.trim());
+    const survey = await surveyRoots(surveyRootCandidates);
+    lastReportContext = { configPath, gitConfig, findings, survey };
+    const provenance = gitConfig?.provenance;
+    const markdown = renderFieldReport({
+      appName: loaded.appName,
+      appVersion: app.getVersion(),
+      hostname: os.hostname(),
+      configHostname: process.env["ELI_LAUNCHER_CONFIG_HOSTNAME"],
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron ?? "unknown",
+      configPath,
+      ...(provenance
+        ? {
+            configRepo: {
+              url: redactError(
+                provenance.url,
+                process.env["ELI_LAUNCHER_CONFIG_REPO_TOKEN"],
+                process.env["ELI_LAUNCHER_CONFIG_REPO_USERNAME"],
+              ),
+              ref: provenance.ref,
+              source: provenance.source,
+              commitSha: provenance.commitSha,
+              fetchedAt: provenance.fetchedAt,
+              zone: provenance.zone,
+              hostFile: provenance.hostFile,
+              zoneFile: provenance.zoneFile,
+              entryCount: provenance.entryCount,
+            },
+          }
+        : {}),
+      configRepoError,
+      catalogStatus: loaded.catalogStatus,
+      findings,
+      launches: sessionLaunches,
+      survey,
+      target: fieldReport,
+      startedAt: new Date(),
+    });
+    await writeFile(fieldReport.reportPath, markdown, "utf8");
+    const ready = findings.filter((finding) => finding.status === "ready").length;
+    logEvent("info", "Field report written", {
+      reportPath: fieldReport.reportPath,
+      eventLogPath: fieldReport.eventLogPath,
+      origin: fieldReport.origin,
+      entriesReady: ready,
+      entriesTotal: findings.length,
+    });
+  } catch (error) {
+    logEvent("warn", "Field report could not be written", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// The catalog never loaded, so there are no entries to preflight — but the
+// machine identity and the reason it failed are the whole point of the report.
+async function writeStartupFailureReport(
+  configPath: string | undefined,
+  failure: string,
+): Promise<void> {
+  if (!fieldReport) {
+    return;
+  }
+  try {
+    const markdown = renderFieldReport({
+      appName: DEFAULT_APP_NAME,
+      appVersion: app.getVersion(),
+      hostname: os.hostname(),
+      configHostname: process.env["ELI_LAUNCHER_CONFIG_HOSTNAME"],
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron ?? "unknown",
+      configPath,
+      configRepoError: failure,
+      findings: [],
+      target: fieldReport,
+      startedAt: new Date(),
+    });
+    await writeFile(fieldReport.reportPath, markdown, "utf8");
+  } catch {
+    // Nothing further to do: the launcher is already showing the error window.
   }
 }
 
 async function bootstrap(): Promise<void> {
+  startFieldReport();
   initLogger(path.join(app.getPath("logs"), "launcher.log.jsonl"));
 
   let configPath: string | undefined;
   let gitConfig: DynamicConfigResult | undefined;
   try {
-    gitConfig = await resolveGitConfig();
     configPath = await resolveConfigPath();
+    gitConfig = await resolveGitConfig(await configDeclaresEntries(configPath));
     loaded = loadConfigFromFile(configPath, {
-      appRoot: app.getAppPath(),
+      appRoot: resolveAppRoot(currentAppLocation()),
       configDir: path.dirname(configPath),
       catalogCacheDir: path.join(app.getPath("userData"), "catalog-cache"),
       ...(gitConfig ? { overlay: gitConfig.overlay } : {}),
     });
+    activeConfigPath = configPath;
+    // A config inside the app bundle cannot be edited in place: a portable exe
+    // unpacks to a temp folder that is deleted on exit, and an installed one is
+    // admin-owned. Saying so is kinder than letting someone edit a file that
+    // vanishes.
+    activeConfigEditable = !configPath.startsWith(resolveAppRoot(currentAppLocation()));
     hmiApi = createHmiApiAdapter(loaded.context.local.hmiApi);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logEvent("error", "Config load failed", { configPath: configPath ?? null, error: message });
+    // A run that never got a catalog is exactly the run worth reporting, so the
+    // failure is recorded before the error window takes over.
+    await writeStartupFailureReport(configPath, message);
     // Register a minimal IPC surface so a stray renderer request cannot crash,
     // then show the error window and keep the process alive so the user sees it.
     registerIpcHandlers();
     showConfigErrorWindow(message, configPath);
     return;
   }
+
+  await writeFieldReport(configPath, gitConfig, undefined);
 
   logEvent("info", "Config loaded", {
     configPath,
@@ -660,14 +984,72 @@ async function shutdownLifecycle(): Promise<void> {
   }
 }
 
+// The startup report describes what COULD run. Everything the operator actually
+// clicked happens afterwards, so the readable file is rewritten on the way out
+// with the session included — otherwise those outcomes exist only in the JSONL,
+// which nobody reads.
+async function rewriteFieldReportWithSession(): Promise<void> {
+  const context = lastReportContext;
+  if (!fieldReport || !context || !loaded || sessionLaunches.length === 0) {
+    return;
+  }
+  await settlePendingWatches();
+  try {
+    // Deliberately reuses the startup findings and survey. Re-scanning here
+    // would add a minute to shutdown for information that cannot have changed.
+    const provenance = context.gitConfig?.provenance;
+    const markdown = renderFieldReport({
+      appName: loaded.appName,
+      appVersion: app.getVersion(),
+      hostname: os.hostname(),
+      configHostname: process.env["ELI_LAUNCHER_CONFIG_HOSTNAME"],
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron ?? "unknown",
+      configPath: context.configPath,
+      ...(provenance
+        ? {
+            configRepo: {
+              url: redactError(
+                provenance.url,
+                process.env["ELI_LAUNCHER_CONFIG_REPO_TOKEN"],
+                process.env["ELI_LAUNCHER_CONFIG_REPO_USERNAME"],
+              ),
+              ref: provenance.ref,
+              source: provenance.source,
+              commitSha: provenance.commitSha,
+              fetchedAt: provenance.fetchedAt,
+              zone: provenance.zone,
+              hostFile: provenance.hostFile,
+              zoneFile: provenance.zoneFile,
+              entryCount: provenance.entryCount,
+            },
+          }
+        : {}),
+      catalogStatus: loaded.catalogStatus,
+      findings: context.findings,
+      launches: sessionLaunches,
+      survey: context.survey,
+      target: fieldReport,
+      startedAt: new Date(),
+    });
+    await writeFile(fieldReport.reportPath, markdown, "utf8");
+  } catch {
+    // The report already exists from startup; failing to enrich it must not
+    // hold up shutdown.
+  }
+}
+
 app.on("before-quit", (event) => {
   runtimeRegistry?.stop();
-  if (!lifecycleCoordinator || lifecycleShutdownStarted) {
+  if (lifecycleShutdownStarted) {
     return;
   }
   event.preventDefault();
   lifecycleShutdownStarted = true;
-  void shutdownLifecycle()
+  void rewriteFieldReportWithSession()
+    .catch(() => undefined)
+    .then(() => shutdownLifecycle())
     .catch((error: unknown) => {
       logEvent("warn", "Lifecycle shutdown deadline failed", {
         error: error instanceof Error ? error.message : String(error),

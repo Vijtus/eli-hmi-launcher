@@ -1073,16 +1073,29 @@ function parseSecurityPolicy(
     local,
   };
 
+  // A root that references a `local.*` setting this machine does not have is
+  // dropped rather than fatal. That lets one allow-list cover both a workstation
+  // with no workspace configured and a deployed machine that has one, and it is
+  // safe in the only direction that matters: dropping a root can only ever
+  // NARROW what may be launched, never widen it.
   const roots = Array.isArray(raw["allowedCommandRoots"])
     ? (raw["allowedCommandRoots"] as unknown[])
         .map((entry) => readText(entry))
         .filter((entry) => entry.length > 0)
-        .map((entry) => {
-          const expanded = expandConfiguredString(entry, ctxForRoots);
+        .flatMap((entry) => {
+          let expanded: string;
+          try {
+            expanded = expandConfiguredString(entry, ctxForRoots);
+          } catch (error) {
+            if (error instanceof MissingLocalSettingError) {
+              return [];
+            }
+            throw error;
+          }
           const abs = path.isAbsolute(expanded) || isWindowsAbsolutePath(expanded)
             ? expanded
             : path.resolve(base.configDir, expanded);
-          return path.normalize(abs);
+          return [path.normalize(abs)];
         })
     : [];
 
@@ -1093,14 +1106,51 @@ function parseSecurityPolicy(
   };
 }
 
-function normalizeForCompare(value: string): string {
-  const normalized = path.normalize(value);
-  return process.platform === "win32" ? normalized.replace(/\//g, "\\").toLowerCase() : normalized;
+// Windows path comparison is case-insensitive and separator-agnostic; POSIX is
+// neither. Platform is a parameter so the Windows rule can be exercised from a
+// POSIX host — a Windows deployment's allow-list is routinely checked from a
+// Linux workstation, and getting the answer wrong there is silent.
+function normalizeForCompare(value: string, platform: NodeJS.Platform = process.platform): string {
+  const normalized = platform === "win32" ? path.win32.normalize(value) : path.normalize(value);
+  return platform === "win32" ? normalized.replace(/\//g, "\\").toLowerCase() : normalized;
+}
+
+// Symlink resolution is only meaningful on the host that owns the filesystem.
+// Checking a Windows deployment's allow-list from Linux must not push a
+// `D:\...` path through POSIX path functions, which would resolve it against
+// the working directory and produce nonsense.
+function resolveThroughExistingAncestor(target: string, platform: NodeJS.Platform): string {
+  if (platform !== process.platform) {
+    return target;
+  }
+  const segments: string[] = [];
+  let current = target;
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      if (existsSync(current)) {
+        const resolved = realpathSync(current);
+        return segments.length > 0 ? path.join(resolved, ...segments.reverse()) : resolved;
+      }
+    } catch {
+      return target;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return target; // Reached the filesystem root without finding anything.
+    }
+    segments.push(path.basename(current));
+    current = parent;
+  }
+  return target;
 }
 
 // Enforced at LAUNCH time (authoritative, uses the exact command that will be
 // spawned on the current platform). Throws on violation.
-export function assertCommandAllowed(resolvedCommand: string, policy: SecurityPolicy): void {
+export function assertCommandAllowed(
+  resolvedCommand: string,
+  policy: SecurityPolicy,
+  platform: NodeJS.Platform = process.platform,
+): void {
   const hasSeparator = resolvedCommand.includes("/") || resolvedCommand.includes("\\");
 
   if (!hasSeparator) {
@@ -1122,34 +1172,37 @@ export function assertCommandAllowed(resolvedCommand: string, policy: SecurityPo
     return; // No allow-list configured (a startup warning is emitted separately).
   }
 
-  // Resolve symlinks where the file exists so a symlink cannot escape a root.
-  let candidate = absolute;
-  try {
-    if (existsSync(absolute)) {
-      candidate = realpathSync(absolute);
-    }
-  } catch {
-    candidate = absolute;
-  }
+  // Resolve symlinks so a symlink cannot escape a root. When the command itself
+  // does not exist — the ordinary case for a machine that simply has not got it
+  // installed — resolve the nearest ancestor that DOES and re-append the rest.
+  // Without this, a root under a symlinked parent (macOS /var -> /private/var)
+  // resolves while the absent command cannot, and a plainly missing file is
+  // reported as a security refusal, sending the reader after the wrong problem.
+  const candidate = resolveThroughExistingAncestor(absolute, platform);
 
-  const normalizedCandidate = normalizeForCompare(candidate);
+  const separator = platform === "win32" ? "\\" : path.sep;
+  const normalizedCandidate = normalizeForCompare(candidate, platform);
   const allowed = policy.allowedCommandRoots.some((root) => {
-    let rootResolved = root;
-    try {
-      if (existsSync(root)) {
-        rootResolved = realpathSync(root);
-      }
-    } catch {
-      rootResolved = root;
-    }
-    const normalizedRoot = normalizeForCompare(rootResolved);
-    const withSep = normalizedRoot.endsWith(path.sep) ? normalizedRoot : normalizedRoot + path.sep;
+    // Resolved exactly like the candidate. Anything less is an asymmetry: a
+    // command under a symlinked parent resolves to the real path while a root
+    // that does not itself exist yet keeps the symlinked one, and the two stop
+    // sharing a prefix — refusing a launch that is plainly inside its allowed
+    // root. macOS makes this routine, since /var is a symlink to /private/var
+    // and every temporary directory sits under it.
+    const rootResolved = resolveThroughExistingAncestor(root, platform);
+    const normalizedRoot = normalizeForCompare(rootResolved, platform);
+    const withSep = normalizedRoot.endsWith(separator) ? normalizedRoot : normalizedRoot + separator;
     return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(withSep);
   });
 
   if (!allowed) {
+    // Reports the path as configured, not the symlink-resolved form used for
+    // the comparison above. Someone reading this has to find the string in
+    // their own YAML; echoing an internally normalised variant of it (macOS
+    // rewriting /var to /private/var, say) sends them looking for text they
+    // never wrote.
     throw new Error(
-      `Process command '${candidate}' is not inside any allowed command root ` +
+      `Process command '${absolute}' is not inside any allowed command root ` +
         `(${policy.allowedCommandRoots.join(", ") || "<none configured>"}). ` +
         `Add its directory to security.allowedCommandRoots or move the wrapper into an allowed root.`,
     );

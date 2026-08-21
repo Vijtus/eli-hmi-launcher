@@ -6,11 +6,11 @@ appName: L4 Launcher
 # Mock launches append to <OS-temp>/eli-hmi-launcher-mock.log.
 #
 # For a real deployment, copy config/launcher.example-real.yaml and replace the
-# commands/URLs/paths with real L4 values. See CONFIG_SCHEMA.md for the full
+# commands/URLs/paths with real L4 values. See ../docs/CONFIG_SCHEMA.md for the full
 # schema and the security model.
 # ---------------------------------------------------------------------------
 
-# Security policy for process targets (see CONFIG_SCHEMA.md > Security).
+# Security policy for process targets (see ../docs/CONFIG_SCHEMA.md > Security).
 #   allowedCommandRoots : a resolved process `command` that contains a path must
 #                         live under one of these directories, or the launch is
 #                         refused. Empty list = no directory restriction.
@@ -24,6 +24,12 @@ appName: L4 Launcher
 security:
   allowedCommandRoots:
     - ${APP_ROOT}/examples/launchers
+    # Present only on a deployed machine, where the catalog comes from the config
+    # repo and points at the Perforce workspace / CSS GUI tree. On a workstation
+    # that has neither, these are dropped and the allow-list simply stays
+    # narrower — a root is never widened by being absent.
+    - ${local.workspaceRoot}
+    - ${local.cssGuiRoot}
   allowBareCommands: true
 
 entries:

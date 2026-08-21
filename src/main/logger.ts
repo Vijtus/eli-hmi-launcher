@@ -4,6 +4,7 @@
 
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { appendFieldEvent } from "./field-report";
 import type { LaunchTarget } from "../shared/types";
 
 let logFilePath = "";
@@ -27,10 +28,16 @@ export function getLogFilePath(): string {
 }
 
 function write(record: Record<string, unknown>): void {
+  const stamped = { ts: new Date().toISOString(), ...record };
+  // A portable run also mirrors everything next to the executable, so the
+  // operator can hand back one folder instead of hunting for the userData log.
+  // Already redacted by the callers below, so nothing extra leaks here.
+  appendFieldEvent(stamped);
+
   if (!logFilePath) {
     return;
   }
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...record }) + "\n";
+  const line = JSON.stringify(stamped) + "\n";
   try {
     appendFileSync(logFilePath, line, "utf8");
   } catch (error) {
