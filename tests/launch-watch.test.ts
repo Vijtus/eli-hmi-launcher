@@ -23,8 +23,12 @@ test("a process that dies shortly after launch is reported as exited early", asy
   assert.ok(result.observedForMs < 200, `observed for ${result.observedForMs}ms`);
 });
 
+// The child has to outlive the probing, not just the checkpoints. Each
+// inspection costs a PowerShell subprocess on Windows — around two seconds —
+// so three checkpoints take far longer than the checkpoint values suggest, and
+// a short-lived child exits mid-watch and is correctly reported as having quit.
 test("a process that keeps running is reported as still running", async () => {
-  const child = spawn(process.execPath, ["-e", "setTimeout(()=>process.exit(0), 5000)"], {
+  const child = spawn(process.execPath, ["-e", "setTimeout(()=>process.exit(0), 120000)"], {
     stdio: "ignore",
   });
   await new Promise((resolve) => child.once("spawn", resolve));
