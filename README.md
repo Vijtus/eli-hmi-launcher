@@ -63,6 +63,17 @@ tail -f "${TMPDIR:-/tmp}/eli-hmi-launcher-mock.log"
 Get-Content "$env:TEMP\eli-hmi-launcher-mock.log" -Wait
 ```
 
+## Documentation
+
+| | |
+|---|---|
+| [docs/INSTALL.md](docs/INSTALL.md) | Install and run on Windows, macOS, Linux |
+| [docs/FILL-IN-QUICKSTART.md](docs/FILL-IN-QUICKSTART.md) | One page: write your own catalog |
+| [docs/CONFIG_HOWTO.md](docs/CONFIG_HOWTO.md) | Full guide to catalog entries |
+| [docs/CONFIG_SCHEMA.md](docs/CONFIG_SCHEMA.md) | Complete configuration reference |
+| [docs/BLOCKERS.md](docs/BLOCKERS.md) | Open questions owned by site maintainers |
+| [docs/STATUS.md](docs/STATUS.md) · [docs/CHANGELOG.md](docs/CHANGELOG.md) | Implementation status and history |
+
 ## Build / typecheck / validate
 
 Everything in this block runs on Windows, macOS and Linux:
@@ -142,7 +153,7 @@ in `08-local-realistic-overview.png`, `09-local-realistic-cooling.png`,
 This acceptance config contains explicit local contracts. The `.exe` files are
 POSIX fixtures, not NI LabVIEW binaries. The lifecycle sidecar is not the
 unresolved site lifecycle API, and the memento uses a local alarm root without
-a site alarm server. See `STATUS.md` and `BLOCKERS.md` for the ticket buckets.
+a site alarm server. See `docs/STATUS.md` and `docs/BLOCKERS.md` for the ticket buckets.
 
 ## Collecting real GUI entries from L4 users
 
@@ -157,7 +168,7 @@ npm run validate-config -- converted.yaml   # same validator the app uses
 
 Only rows marked `Enabled = yes` are converted; invalid rows abort with
 row-numbered errors (the converter never guesses values). Merge the resulting
-`entries:` into the deployed `launcher.yaml`. See **CONFIG_HOWTO.md** §6.
+`entries:` into the deployed `launcher.yaml`. See **docs/CONFIG_HOWTO.md** §6.
 
 ## Point at a different config
 
@@ -548,7 +559,7 @@ unlabelled argv positions. Config-load success/failure is also logged. Example:
 
 ## Configuration & security (summary)
 
-Full reference: **CONFIG_SCHEMA.md**. The essentials:
+Full reference: **docs/CONFIG_SCHEMA.md**. The essentials:
 
 - The config file is a **trust root**. `process` targets run with the launcher
   user's privileges. Anyone who can write the file (or its directory) can make
@@ -581,7 +592,7 @@ posture, placeholder paths).
 `config/local-acceptance.yaml` is the executable Linux contract configuration;
 it is not a deployment template.
 
-**Adding your GUIs to the launcher (for L4 users):** see **CONFIG_HOWTO.md** —
+**Adding your GUIs to the launcher (for L4 users):** see **docs/CONFIG_HOWTO.md** —
 a short, copy-paste guide for filling in entries without reading the full
 schema reference.
 
@@ -596,7 +607,7 @@ server reuse, session-local runtime state, OS command overrides, config
 variables, main-process access policies, security allow-list, launch logging,
 regression tests, and CI.
 
-Blocked or undecided site integration is listed in `BLOCKERS.md`, including the
+Blocked or undecided site integration is listed in `docs/BLOCKERS.md`, including the
 HMI Python REST contract, alarm memento, Phoebus app names, write-mode meaning,
 and real L4 values. In-app config editing, database storage, telemetry, and an
 auto-updater are not part of this work order.
@@ -626,4 +637,4 @@ keyboard and screen-reader semantics (`role="combobox"`/`listbox"`/`option"`,
 The header uses a **text wordmark** (`L4 LAUNCHER`). No official ELI/L4 image
 logo was supplied with this work, and none was invented. If maintainers provide
 an official asset, drop it in and replace the `<h1>` wordmark, preserving its
-aspect ratio. See `BLOCKERS.md`.
+aspect ratio. See `docs/BLOCKERS.md`.

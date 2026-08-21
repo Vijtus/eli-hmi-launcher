@@ -117,8 +117,8 @@ started from arbitrary places and the config decides which commands get spawned.
 A **source checkout** does use `./config/launcher.yaml`, which is what makes
 `npm start` work out of the box.
 
-See [`CONFIG_SCHEMA.md`](../CONFIG_SCHEMA.md) for the schema and
-[`CONFIG_HOWTO.md`](../CONFIG_HOWTO.md) for a walkthrough.
+See [`CONFIG_SCHEMA.md`](CONFIG_SCHEMA.md) for the schema and
+[`CONFIG_HOWTO.md`](CONFIG_HOWTO.md) for a walkthrough.
 
 ---
 

@@ -21,11 +21,21 @@ files:
 # reference them as real filesystem paths via ${APP_ROOT} and the launcher spawns
 # them. Anything inside the asar cannot be stat'd or executed.
 # See src/main/app-paths.ts.
+# Deliberately narrow. An installed launcher should contain what it needs to
+# run and nothing an operator has to wonder about: the development fixtures and
+# the acceptance-only configs belong in the repository, not in Program Files.
 extraResources:
-  - from: config
-    to: config
-  - from: examples
-    to: examples
+  # The default catalog, a worked real-deployment example, and the blank
+  # template an operator starts from.
+  - from: config/launcher.yaml
+    to: config/launcher.yaml
+  - from: config/launcher.example-real.yaml
+    to: config/launcher.example-real.yaml
+  - from: config/launcher.blank.yaml
+    to: config/launcher.blank.yaml
+  # Referenced by the default catalog, so the app is clickable out of the box.
+  - from: examples/launchers
+    to: examples/launchers
   # A snapshot of eli-eric/eli-hmi-config, so a machine with no route to that
   # private repo still resolves its real catalog by hostname.
   - from: config-repo

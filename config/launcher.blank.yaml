@@ -2,7 +2,7 @@
 # L4 Launcher — blank catalog. Fill this in.
 #
 #   Every table row in the launcher is one block under `entries:` below.
-#   Full instructions: CONFIG_HOWTO.md      Full reference: CONFIG_SCHEMA.md
+#   Full instructions: ../docs/CONFIG_HOWTO.md      Full reference: ../docs/CONFIG_SCHEMA.md
 #
 #   Check your work before deploying it:
 #       npm run validate-config -- <this file>
@@ -52,7 +52,7 @@ local: {}
 # at 2 spaces. `id` must be unique and never change (it appears in logs).
 #
 # Six target kinds: process, labview-dev, labview-epics, phoebus, web, folder.
-# Each is explained with examples in CONFIG_HOWTO.md section 2.
+# Each is explained with examples in ../docs/CONFIG_HOWTO.md section 2.
 # -----------------------------------------------------------------------------
 entries: []
 

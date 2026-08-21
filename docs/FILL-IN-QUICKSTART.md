@@ -1,7 +1,7 @@
 # Filling in your own catalog — quick start
 
-One page. The full guide is [`CONFIG_HOWTO.md`](../CONFIG_HOWTO.md); the
-complete reference is [`CONFIG_SCHEMA.md`](../CONFIG_SCHEMA.md).
+One page. The full guide is [`CONFIG_HOWTO.md`](CONFIG_HOWTO.md); the
+complete reference is [`CONFIG_SCHEMA.md`](CONFIG_SCHEMA.md).
 
 ## 1. Get a blank file
 
