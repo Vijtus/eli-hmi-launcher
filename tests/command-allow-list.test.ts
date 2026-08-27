@@ -115,5 +115,13 @@ test("the Phoebus install root can be named in the allow-list by variable", () =
     ].join("\n"),
     { appRoot: "/tmp/app", configDir: "/tmp/cfg" },
   );
-  assert.deepEqual(parsed.context.security.allowedCommandRoots, ["/opt/phoebus/product-5.0.2"]);
+  // Compared through path.normalize because the resolver returns roots in the
+  // host's separator style: on Windows this value comes back as
+  // \opt\phoebus\product-5.0.2. What the test is about is that the variable
+  // resolved to the configured install root at all — asserting the separator
+  // as well made this fail on Windows, the one platform the launcher actually
+  // ships to.
+  assert.deepEqual(parsed.context.security.allowedCommandRoots, [
+    path.normalize("/opt/phoebus/product-5.0.2"),
+  ]);
 });
