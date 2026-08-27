@@ -1,0 +1,37 @@
+﻿GITLAB REACHABILITY CHECK
+=========================
+run on   : TESTZ-OPR04  by TESTZ_opr1
+at       : 2026-08-27 09:12:31
+target   : https://gitlab.eli-beams.eu/lcs/eli-hmi-config.git
+
+token    : loaded from gitlab-token.txt (user='wiktor', token=[REDACTED])
+
+1. DNS
+   OK   gitlab.eli-beams.eu -> [internal address]
+
+2. TCP 443
+   OK   port 443 open
+
+3. HTTPS
+   OK   HTTP 200
+
+4. TOKEN - can it read lcs/eli-hmi-config ?
+   FAIL HTTP 403 - The remote server returned an error: (403) Forbidden.
+        403 = token is valid but not allowed to read this project
+
+5. GIT ON THIS MACHINE
+   OK   C:\Program Files\Git\cmd\git.exe
+        git version 2.49.0.windows.1
+
+6. CLONE TEST
+   cloning into C:\Users\TESTZ_~1\AppData\Local\Temp\eli-cfg-probe-2026-08-27_09-12-30
+   OK   clone succeeded
+
+   what is in the repo:
+     0\README.md
+     0\launcher\host\TESTZ-Deploy.yaml
+     0\launcher\zone\TESTZ.yaml
+
+================================================================
+DONE.  Send back the file:  gitlab-check-2026-08-27_09-12-30.txt
+================================================================

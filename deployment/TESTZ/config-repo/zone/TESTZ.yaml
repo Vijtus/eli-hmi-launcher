@@ -1,0 +1,58 @@
+labview-dev:
+  - ioc-name: Camera Manager
+    host: RMC00-001
+    ioc-type: Camera Manager
+    exe: CM.exe
+  - ioc-name: Camera Manager
+    host: RMC00-002
+    ioc-type: Camera Manager
+    exe: CM.exe
+  - ioc-name: Camera Manager
+    host: RMC00-003
+    ioc-type: Camera Manager
+    exe: CM.exe
+  - ioc-name: Camera Manager
+    host: RMC00-004
+    ioc-type: Camera Manager
+    exe: CM.exe
+  - ioc-name: Camera Manager
+    host: TESTZ-Deploy
+    ioc-type: Camera Manager
+    exe: CM.exe
+  - ioc-name: Fast Pointing IOC
+    host: RMC00-001
+    ioc-type: Fast Pointing IOC
+    exe: Fast Pointing.exe
+  - ioc-name: Pointing
+    host: RMC00-002
+    ioc-type: Pointing
+    exe: Pointing4x4.exe
+labview-epics:
+
+# Phoebus / CSS displays. `resource:` is relative to the host file's `css-gui:`.
+# Confirmed working on TESTZ-OPR04 on 2026-08-27.
+css:
+  - name: Power Meters
+    technology: Diagnostics
+    resource: panel/TESTZ/pm.bob
+    app: display_runtime
+    note: PM00-001, PM00-002
+  - name: Centroids
+    technology: Cameras
+    resource: panel/TESTZ/centroids.bob
+    app: display_runtime
+    note: C00-005
+  # Opens Phoebus with the zone settings and nothing else. This is the entry that
+  # tells "Phoebus or the .ini is broken" apart from "one panel is missing" - it
+  # was already passing while both panels above were still failing.
+  - name: Phoebus (no panel)
+    bare: true
+    note: starts Phoebus with the TESTZ settings only
+
+web:
+  - name: ELI Beamlines
+    url: https://www.eli-beams.eu/
+    note: public site
+  - name: Phoebus Documentation
+    url: https://control-system-studio.readthedocs.io/
+    note: display builder / databrowser reference
