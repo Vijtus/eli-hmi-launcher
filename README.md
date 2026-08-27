@@ -4,6 +4,24 @@ ELI HMI Launcher is a small Electron desktop application for finding and launchi
 
 The product name is fixed. Deployment identity is configuration data (`siteName`) and deployment-specific material lives outside the generic application tree.
 
+## Deploying at TESTZ
+
+Installers and portable builds for all three platforms are attached to the [latest release](../../releases/latest). On the TESTZ control-room workstation:
+
+```
+1  run ELI.HMI.Launcher-0.4.0-x64-setup.exe, or use the -x64-portable.exe build
+2  copy deployment/TESTZ/launcher.yaml  to  %APPDATA%\eli-hmi-launcher\launcher.yaml
+3  copy deployment/TESTZ/panels/TESTZ   to  C:\Workspaces\css-gui\panel\
+```
+
+Step 2 uses `%APPDATA%` rather than the install directory because an upgrade replaces the install directory; the launcher's top strip reads `CONFIG (built in, not editable)` when that has happened. The portable build reads `launcher.yaml` from beside its executable instead.
+
+Step 3 is required until `panel/TESTZ/` is committed to the css-gui repository. The two panels exist in no other repository — see [deployment/TESTZ/README.md](deployment/TESTZ/README.md).
+
+The builds are unsigned: Windows shows SmartScreen (More info → Run anyway) and macOS requires right-click → Open on first launch.
+
+Last verified on `TESTZ-OPR04` on 2026-08-27, 15 of 15 entries launching; the reports are under [deployment/TESTZ/field-reports/](deployment/TESTZ/field-reports).
+
 ## Platforms
 
 The application is built and tested on Windows, macOS, and Linux. Packaging targets include Windows NSIS/portable/zip, macOS dmg/zip, and Linux AppImage/deb/rpm/tar.gz. Platform-specific process behavior is covered by the cross-platform CI matrix.
