@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { materializeProcessTarget, parseConfig } from "../src/main/config.ts";
+import { materializeProcessTarget, parseConfig } from "../src/main/config/load.ts";
 import type { ProcessLaunchTarget } from "../src/shared/types.ts";
 
 const BASE = { appRoot: "/tmp/app", configDir: "/tmp/cfg" };
 
-test("semicolon strings and YAML lists parse to the same multi-values", () => {
-  const parsed = parseConfig(
-    `
+test("semicolon-separated multi-values are rejected in favor of explicit YAML lists", () => {
+  assert.throws(
+    () =>
+      parseConfig(
+        `
 entries:
   - id: a
     name: A
@@ -15,10 +17,60 @@ entries:
     section: [L4b, L4c]
     target: { kind: web, url: "https://example.local/a" }
 `,
-    BASE,
+        BASE,
+      ),
+    /must use a YAML list instead of a semicolon-separated string/,
   );
-  assert.deepEqual(parsed.rows[0].technology, ["L4b", "L4c"]);
-  assert.deepEqual(parsed.rows[0].section, ["L4b", "L4c"]);
+});
+
+test("entries require explicit ids and names", () => {
+  assert.throws(
+    () =>
+      parseConfig(
+        `
+entries:
+  - name: Missing id
+    target: { kind: web, url: "https://example.local/a" }
+`,
+        BASE,
+      ),
+    /missing required `id`/,
+  );
+  assert.throws(
+    () =>
+      parseConfig(
+        `
+entries:
+  - id: missing-name
+    target: { kind: web, url: "https://example.local/a" }
+`,
+        BASE,
+      ),
+    /missing required `name`/,
+  );
+});
+
+test("legacy appName is rejected in favor of siteName", () => {
+  assert.throws(
+    () => parseConfig("appName: TESTZ\nentries: []\n", BASE),
+    /obsolete `appName`; use `siteName`/,
+  );
+});
+
+test("legacy rows alias is rejected", () => {
+  assert.throws(
+    () =>
+      parseConfig(
+        `
+rows:
+  - id: old
+    name: Old
+    target: { kind: web, url: "https://example.local/a" }
+`,
+        BASE,
+      ),
+    /obsolete `rows`/,
+  );
 });
 
 test("duplicate ids across entries and actions are rejected at load", () => {
@@ -99,7 +151,7 @@ entries:
 `,
     BASE,
   );
-  assert.deepEqual(parsed.context.local, { phoebus: {}, hosts: {}, hmiApi: {}, monitoring: {} });
+  assert.deepEqual(parsed.context.local, { phoebus: {}, hosts: {}, monitoring: {} });
 });
 
 test("undefined local references fail at load with the key and entry id", () => {
@@ -162,43 +214,3 @@ test("local runtime reconciliation interval must be a positive integer", () => {
   );
 });
 
-test("local lifecycle API settings are parsed and available for expansion", () => {
-  const parsed = parseConfig(
-    `
-local:
-  hmiApi:
-    baseUrl: http://127.0.0.1:8765/api/lifecycle/v1
-    stationId: launcher-test
-    authTokenEnv: TEST_LIFECYCLE_TOKEN
-    requestTimeoutMs: 2345
-    heartbeatIntervalMs: 6789
-entries:
-  - id: api-path
-    name: API path
-    target:
-      kind: process
-      command: /tmp/launcher
-      args: ["${"${local.hmiApi.stationId}"}"]
-`,
-    BASE,
-  );
-
-  assert.deepEqual(parsed.context.local.hmiApi, {
-    baseUrl: "http://127.0.0.1:8765/api/lifecycle/v1",
-    stationId: "launcher-test",
-    authTokenEnv: "TEST_LIFECYCLE_TOKEN",
-    requestTimeoutMs: 2345,
-    heartbeatIntervalMs: 6789,
-  });
-  const target = parsed.targetsById.get("api-path") as ProcessLaunchTarget;
-  assert.deepEqual(materializeProcessTarget(target, parsed.context).args, ["launcher-test"]);
-});
-
-test("local lifecycle API durations must be positive integers", () => {
-  for (const key of ["requestTimeoutMs", "heartbeatIntervalMs"] as const) {
-    assert.throws(
-      () => parseConfig(`local:\n  hmiApi:\n    ${key}: 0\n`, BASE),
-      new RegExp(`local\\.hmiApi\\.${key}.*positive integer`),
-    );
-  }
-});

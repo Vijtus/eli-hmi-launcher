@@ -6,7 +6,7 @@ import {
   LaunchPolicyError,
   describeUnperformedLaunch,
   runWithLaunchPolicy,
-} from "../src/main/launch-policy-enforcement.ts";
+} from "../src/main/launch/access.ts";
 import type { LaunchAccessPolicy } from "../src/shared/types.ts";
 
 const SINGLETON: LaunchAccessPolicy = {
@@ -134,24 +134,18 @@ test("different entry ids are not serialized behind each other", async () => {
   await Promise.all([one, two]);
 });
 
-test("policy enforcement is in Electron main before launch and absent from renderer", async () => {
-  const main = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+test("policy enforcement is in the main-process launch boundary and absent from renderer", async () => {
+  const launcher = await readFile(new URL("../src/main/launch/index.ts", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../src/renderer/app.ts", import.meta.url), "utf8");
-  const handlerStart = main.indexOf('ipcMain.handle("launcher:launch-item"');
-  const policyCall = main.indexOf("runWithLaunchPolicy(", handlerStart);
-  const launchCall = main.indexOf("await launchTarget(", policyCall);
+  const policyCall = launcher.indexOf("runWithLaunchPolicy(");
+  const launchCall = launcher.indexOf("launchTarget(", policyCall);
 
-  assert.ok(handlerStart >= 0, "launch IPC handler must exist in main");
-  assert.ok(policyCall > handlerStart, "policy must run inside the main-process handler");
+  assert.ok(policyCall >= 0, "launch orchestration must enforce access policy");
   assert.ok(launchCall > policyCall, "policy must run before target launch");
   assert.doesNotMatch(renderer, /runWithLaunchPolicy|LaunchAccessPolicy|maxInstances/);
 });
 
-// Regression: a policy outcome that did not spawn anything must never be
-// reported or logged as a launch. Before this guard, the launch IPC handler
-// ran logLaunch({ok: true}) and returned ok:true unconditionally after the
-// policy resolved, so a focus outcome would have claimed a launch that never
-// happened.
+// Policy outcomes that do not spawn a process must not be reported as launches.
 test("a focused outcome is described as an unperformed launch", () => {
   const reason = describeUnperformedLaunch("camera-manager-alena", {
     launched: false,
@@ -179,11 +173,11 @@ test("an actual launch is not described as unperformed", () => {
   );
 });
 
-test("main reports a non-launching policy outcome before logging a launch", async () => {
-  const source = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+test("launch orchestration reports a non-launching policy outcome before logging a launch", async () => {
+  const source = await readFile(new URL("../src/main/launch/index.ts", import.meta.url), "utf8");
   const guardIndex = source.indexOf("describeUnperformedLaunch(itemId, policyResult)");
-  const logIndex = source.indexOf("ok: true, durationMs");
+  const logIndex = source.indexOf("logLaunch({", guardIndex);
   assert.ok(guardIndex > 0, "main must consult describeUnperformedLaunch");
-  assert.ok(logIndex > 0, "main must still log successful launches");
+  assert.ok(logIndex > 0, "launch orchestration must still log successful launches");
   assert.ok(guardIndex < logIndex, "the guard must precede the success log");
 });

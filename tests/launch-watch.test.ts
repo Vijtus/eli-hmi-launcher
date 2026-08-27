@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { watchLaunch } from "../src/main/launch-watch.ts";
+import { watchLaunch } from "../src/main/diagnostics/launch-watch.ts";
 
 const fast = [50, 100, 200];
 const noSleep = async (ms: number) => {
@@ -69,4 +69,53 @@ test("a missing capture file is not an error", async () => {
   );
   assert.equal(result.outcome, "exited-early");
   assert.equal(result.output, undefined);
+});
+
+// The report is the file that gets emailed to other people, and it carries
+// whatever a failing program printed. The site keeps ChannelFinder credentials
+// in the Phoebus settings files those programs read, so a failure that echoes
+// its configuration is not a hypothetical.
+test("captured output has credential-shaped values removed", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "eli-redact-"));
+  try {
+    const capture = path.join(dir, "out.log");
+    writeFileSync(
+      capture,
+      [
+        "org.phoebus.channelfinder/username=svc-reader",
+        "org.phoebus.channelfinder/password=hunter2",
+        "org.phoebus.applications.alarm/server=alarm-host.example.org:9092",
+        "LabVIEW: Error 1055 occurred at Open VI Reference",
+      ].join("\n"),
+    );
+    const child = spawn(process.execPath, ["-e", "process.exit(1)"], { stdio: "ignore" });
+    await new Promise((resolve) => child.once("spawn", resolve));
+    const result = await watchLaunch(child.pid as number, capture, fast, noSleep);
+    const output = result.output ?? "";
+
+    assert.doesNotMatch(output, /hunter2/);
+    assert.match(output, /password=\[REDACTED\]/);
+    // Everything that is not credential-shaped has to survive, or the report
+    // stops explaining the failure it exists to explain.
+    assert.match(output, /Error 1055 occurred at Open VI Reference/);
+    assert.match(output, /alarm\/server=alarm-host\.example\.org:9092/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a url with embedded credentials loses them but keeps the host", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "eli-redact-url-"));
+  try {
+    const capture = path.join(dir, "out.log");
+    writeFileSync(capture, "repo=https://user:s3cret@gitlab.eli-beams.eu/lcs/eli-hmi-config.git\n");
+    const child = spawn(process.execPath, ["-e", "process.exit(1)"], { stdio: "ignore" });
+    await new Promise((resolve) => child.once("spawn", resolve));
+    const result = await watchLaunch(child.pid as number, capture, fast, noSleep);
+    const output = result.output ?? "";
+    assert.doesNotMatch(output, /s3cret/);
+    assert.match(output, /gitlab\.eli-beams\.eu/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

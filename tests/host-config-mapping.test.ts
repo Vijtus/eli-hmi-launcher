@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import YAML from "yaml";
-import { hostPassthrough, mapHostDocumentToLocal } from "../src/main/host-config-mapping.ts";
+import { hostPassthrough, mapHostDocumentToLocal } from "../src/main/catalog/host.ts";
 
-// Verbatim copy of launcher/host/TESTZ-Deploy.yaml from eli-eric/eli-hmi-config@ad98e4b.
+// Representative deployed host document; keep field spelling/casing intact.
 const REAL_HOST = `zone: TESTZ
 P4-workspace: D:\\Workspaces\\Perforce\\TESTZ_dev_TESTZ-Deploy_8929
 css-gui: D:\\Workspaces\\css-gui
@@ -26,61 +26,13 @@ test("the real host file maps onto the launcher's local machine settings", () =>
     cssGuiRoot: "D:\\Workspaces\\css-gui",
     phoebus: { installRoot: "C:\\CSS Phoebus\\product-5.0.2" },
     hosts: { "hmi-server": "testz-deploy20:8082" },
-    hmiApi: {
-      baseUrl: "http://testz-deploy20:8082/api/lifecycle/v1",
-      allowInsecureTransport: true,
-    },
   });
   assert.deepEqual(warnings, []);
 });
 
-test("a scheme-less `hmi-server` becomes an HTTP base URL with the insecure opt-in", () => {
-  // A bare host:port reads as a trusted site LAN. Without the opt-in, hmi-api.ts
-  // would refuse a non-loopback URL that is not HTTPS and the config would not load.
+test("hmi-server remains a named host without inferring an API contract", () => {
   const { local } = map(REAL_HOST);
-  assert.deepEqual(local["hmiApi"], {
-    baseUrl: "http://testz-deploy20:8082/api/lifecycle/v1",
-    allowInsecureTransport: true,
-  });
-  // The raw value is still available for ${local.hosts.hmi-server}.
   assert.equal((local["hosts"] as Record<string, string>)["hmi-server"], "testz-deploy20:8082");
-});
-
-test("an explicit https `hmi-server` keeps the strict transport rules", () => {
-  const { local } = map("zone: TESTZ\nhmi-server: https://hmi.example.org\n");
-  assert.deepEqual(local["hmiApi"], { baseUrl: "https://hmi.example.org/api/lifecycle/v1" });
-});
-
-test("an `hmi-server` that already carries a path is used verbatim", () => {
-  const { local } = map("zone: TESTZ\nhmi-server: https://hmi.example.org/lifecycle/v2\n");
-  assert.deepEqual(local["hmiApi"], { baseUrl: "https://hmi.example.org/lifecycle/v2" });
-});
-
-test("a trailing slash on `hmi-server` does not produce a doubled path", () => {
-  const { local } = map("zone: TESTZ\nhmi-server: https://hmi.example.org/\n");
-  assert.deepEqual(local["hmiApi"], { baseUrl: "https://hmi.example.org/api/lifecycle/v1" });
-});
-
-test("an unusable `hmi-server` value is rejected with a remedy", () => {
-  assert.throws(
-    () => map("zone: TESTZ\nhmi-server: 'ftp://hmi.example.org'\n"),
-    /must use HTTP or HTTPS/,
-  );
-});
-
-test("a host `local:` block can force the strict transport rule back on", () => {
-  const document = YAML.parse(
-    `${REAL_HOST}local:\n  hmiApi:\n    allowInsecureTransport: false\n`,
-  ) as Record<string, unknown>;
-  // The alias still derives the insecure default...
-  assert.equal(
-    (mapHostDocumentToLocal(document, "h.yaml").local["hmiApi"] as Record<string, unknown>)[
-      "allowInsecureTransport"
-    ],
-    true,
-  );
-  // ...and the passthrough block, applied later, overrides it.
-  assert.deepEqual(hostPassthrough(document), { hmiApi: { allowInsecureTransport: false } });
 });
 
 test("host keys are matched case-insensitively", () => {

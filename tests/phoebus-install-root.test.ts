@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parseConfig, PHOEBUS_LAUNCHER_CANDIDATES } from "../src/main/config.ts";
+import { parseConfig, PHOEBUS_LAUNCHER_CANDIDATES } from "../src/main/config/load.ts";
 
 const BASE = { appRoot: "/tmp/app", configDir: "/tmp/cfg" };
 

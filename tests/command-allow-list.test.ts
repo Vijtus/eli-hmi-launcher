@@ -3,7 +3,7 @@ import test from "node:test";
 import os from "node:os";
 import path from "node:path";
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { assertCommandAllowed } from "../src/main/config.ts";
+import { assertCommandAllowed, parseConfig } from "../src/main/config/load.ts";
 
 // A Windows deployment's allow-list is routinely checked from a Linux
 // workstation — the field report does exactly that. Windows path comparison is
@@ -94,4 +94,26 @@ test("a symlinked root still refuses a command outside it", (t) => {
     rmSync(path.dirname(link), { recursive: true, force: true });
     rmSync(real, { recursive: true, force: true });
   }
+});
+
+// Phoebus lives outside the LabVIEW workspace, so a deployment has to allow its
+// install directory. That directory is already a configured setting; without
+// exposing it as a variable the allow-list had to repeat the path by hand, and
+// ${local.phoebus.installRoot} silently resolved to nothing — dropping the root
+// and refusing every Phoebus launch on a machine that had configured it.
+test("the Phoebus install root can be named in the allow-list by variable", () => {
+  const parsed = parseConfig(
+    [
+      "local:",
+      "  phoebus:",
+      "    installRoot: /opt/phoebus/product-5.0.2",
+      "    serverPort: 4918",
+      "security:",
+      "  allowedCommandRoots: ['${local.phoebus.installRoot}']",
+      "  allowBareCommands: false",
+      "entries: []",
+    ].join("\n"),
+    { appRoot: "/tmp/app", configDir: "/tmp/cfg" },
+  );
+  assert.deepEqual(parsed.context.security.allowedCommandRoots, ["/opt/phoebus/product-5.0.2"]);
 });

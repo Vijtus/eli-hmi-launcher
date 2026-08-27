@@ -4,7 +4,7 @@ import {
   evaluateLaunchAccessPolicy,
   resolveLaunchAccessPolicy,
   type PolicyInstance,
-} from "../src/main/access-policy.ts";
+} from "../src/main/launch/policy.ts";
 import type { LaunchAccessPolicy, RuntimeItemState } from "../src/shared/types.ts";
 
 function running(launchMode: PolicyInstance["launchMode"]): PolicyInstance {

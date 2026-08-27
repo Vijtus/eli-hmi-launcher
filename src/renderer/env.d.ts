@@ -1,15 +1,7 @@
-import type { ConfigLocation, FieldReportInfo, LauncherConfig, LaunchResult, RuntimeSnapshot } from "../shared/types";
+import type { LauncherApi } from "../shared/ipc";
 
 declare global {
   interface Window {
-    launcherApi: {
-      getConfig(): Promise<LauncherConfig>;
-      getRuntimeStates(): Promise<RuntimeSnapshot>;
-      onRuntimeStates(listener: (snapshot: RuntimeSnapshot) => void): () => void;
-      launchItem(itemId: string): Promise<LaunchResult>;
-      getFieldReport?(): Promise<FieldReportInfo | null>;
-      getConfigLocation?(): Promise<ConfigLocation | null>;
-      revealConfig?(): Promise<void>;
-    };
+    launcherApi: LauncherApi;
   }
 }

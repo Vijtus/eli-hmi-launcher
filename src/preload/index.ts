@@ -1,19 +1,19 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ConfigLocation, FieldReportInfo, LauncherConfig, LaunchResult, RuntimeSnapshot } from "../shared/types";
+import { IPC, type LauncherApi } from "../shared/ipc";
+import type { RuntimeSnapshot } from "../shared/types";
 
-contextBridge.exposeInMainWorld("launcherApi", {
-  getConfig: (): Promise<LauncherConfig> => ipcRenderer.invoke("launcher:get-config"),
-  getRuntimeStates: (): Promise<RuntimeSnapshot> =>
-    ipcRenderer.invoke("launcher:get-runtime-states"),
-  onRuntimeStates: (listener: (snapshot: RuntimeSnapshot) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, snapshot: RuntimeSnapshot): void => {
-      listener(snapshot);
-    };
-    ipcRenderer.on("launcher:runtime-states", handler);
-    return () => ipcRenderer.removeListener("launcher:runtime-states", handler);
+const api: LauncherApi = {
+  getConfig: () => ipcRenderer.invoke(IPC.getConfig),
+  getRuntimeStates: () => ipcRenderer.invoke(IPC.getRuntimeStates),
+  onRuntimeStates: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: RuntimeSnapshot): void => listener(snapshot);
+    ipcRenderer.on(IPC.runtimeStates, handler);
+    return () => ipcRenderer.removeListener(IPC.runtimeStates, handler);
   },
-  launchItem: (itemId: string): Promise<LaunchResult> => ipcRenderer.invoke("launcher:launch-item", itemId),
-  getFieldReport: (): Promise<FieldReportInfo | null> => ipcRenderer.invoke("launcher:get-field-report"),
-  getConfigLocation: (): Promise<ConfigLocation | null> => ipcRenderer.invoke("launcher:get-config-location"),
-  revealConfig: (): Promise<void> => ipcRenderer.invoke("launcher:reveal-config"),
-});
+  launchItem: (itemId) => ipcRenderer.invoke(IPC.launchItem, itemId),
+  getFieldReport: () => ipcRenderer.invoke(IPC.getFieldReport),
+  getConfigLocation: () => ipcRenderer.invoke(IPC.getConfigLocation),
+  revealConfig: () => ipcRenderer.invoke(IPC.revealConfig),
+};
+
+contextBridge.exposeInMainWorld("launcherApi", api);

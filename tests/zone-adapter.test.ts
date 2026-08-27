@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import YAML from "yaml";
-import { adaptZoneDocument } from "../src/main/zone-adapter.ts";
+import { adaptZoneDocument } from "../src/main/catalog/zone.ts";
 
-// Verbatim copy of launcher/zone/TESTZ.yaml from eli-eric/eli-hmi-config@ad98e4b.
+// Representative deployed zone document; keep source field spellings intact.
 const REAL_ZONE = `labview-dev:
   - ioc-name: Camera Manager
     host: RMC00-001
@@ -34,14 +34,14 @@ function adapt(text: string) {
   return adaptZoneDocument(YAML.parse(text) as Record<string, unknown>, "/repo/launcher/zone/TESTZ.yaml");
 }
 
-test("the real TESTZ zone file produces five labview-dev entries", () => {
+test("a deployed TESTZ zone file produces five labview-dev entries", () => {
   const { entries, warnings } = adapt(REAL_ZONE);
   assert.equal(entries.length, 5);
   assert.deepEqual(warnings, []);
 });
 
 test("empty (null) groups are valid and contribute nothing", () => {
-  // labview-epics, css and web are all null in the real repo today.
+  // Null groups contribute no launcher entries.
   const { entries } = adapt("labview-dev:\nlabview-epics:\ncss:\nweb:\n");
   assert.deepEqual(entries, []);
 });
@@ -130,7 +130,40 @@ test("a css item may restore a saved layout instead of a resource", () => {
 });
 
 test("a css item with nothing to open is rejected with a remedy", () => {
-  assert.throws(() => adapt("css:\n  - name: Empty\n"), /must set `resource` or `layout: true`/);
+  assert.throws(
+    () => adapt("css:\n  - name: Empty\n"),
+    /must set `resource`, `layout: true`, or `bare: true`/,
+  );
+});
+
+// Starting Phoebus with nothing open is how a control room proves the install and
+// the zone .ini work on their own, so the config repo has to be able to say it.
+// `layout: true` cannot stand in: it needs a layout file and throws outright when a
+// Phoebus server is already listening.
+test("a css item may start Phoebus with no panel at all", () => {
+  const { entries } = adapt("css:\n  - name: Phoebus (no panel)\n    bare: true\n");
+  assert.deepEqual(entries[0]?.["target"], { kind: "phoebus" });
+  assert.equal(entries[0]?.["platform"], "CSS");
+});
+
+test("`bare` combined with something to open is rejected rather than guessed at", () => {
+  assert.throws(
+    () => adapt("css:\n  - name: Both\n    bare: true\n    resource: pm.bob\n"),
+    /sets `bare: true` together with `resource`/,
+  );
+  assert.throws(
+    () => adapt("css:\n  - name: Both\n    bare: true\n    layout: true\n"),
+    /sets `bare: true` together with `layout`/,
+  );
+});
+
+// The guard exists so a typo degrades loudly instead of silently launching an
+// empty Phoebus and looking like the panel simply failed to load.
+test("a misspelt resource key still fails instead of becoming a bare launch", () => {
+  assert.throws(
+    () => adapt("css:\n  - name: Typo\n    resorce: pm.bob\n"),
+    /must set `resource`, `layout: true`, or `bare: true`/,
+  );
 });
 
 // The launcher treats `app` as a query parameter applied to a resource, so an
@@ -151,6 +184,14 @@ test("web items map onto the web target", () => {
   const { entries } = adapt("web:\n  - name: Wiki\n    url: https://wiki.example.org\n");
   assert.deepEqual(entries[0]?.["target"], { kind: "web", url: "https://wiki.example.org" });
   assert.equal(entries[0]?.["platform"], "Web");
+});
+
+
+test("config-repo target fields use one canonical spelling", () => {
+  assert.throws(
+    () => adapt("labview-dev:\n  - iocName: X\n    hostName: H\n    iocType: T\n    exeName: E.exe\n"),
+    /missing required key `ioc-name`/,
+  );
 });
 
 test("a missing required key names the group, the item, and the remedy", () => {

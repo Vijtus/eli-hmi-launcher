@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
-import { launchWebTarget } from "../src/main/web-launcher.ts";
+import { parseConfig } from "../src/main/config/load.ts";
+import { launchWebTarget } from "../src/main/launch/index.ts";
 
 const BASE = { appRoot: "/tmp/app", configDir: "/tmp/cfg" };
 

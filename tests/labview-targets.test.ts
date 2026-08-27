@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
-import { materializeLabviewDeveloperTarget } from "../src/main/labview-targets.ts";
-import { launchMaterializedProcess } from "../src/main/native-launcher.ts";
+import { parseConfig } from "../src/main/config/load.ts";
+import { materializeLabviewDeveloperTarget } from "../src/main/launch/labview.ts";
+import { launchMaterializedProcess } from "../src/main/launch/native.ts";
 import type { LabviewDeveloperLaunchTarget } from "../src/shared/types.ts";
 
 const BASE = { appRoot: "/app", configDir: "/config" };
@@ -26,7 +26,7 @@ entries:
 `;
 }
 
-test("LabVIEW developer target builds the ticket argv with the space-containing directory", () => {
+test("LabVIEW developer target builds the required argv with the space-containing directory", () => {
   const parsed = parseConfig(developerConfig("C:\\ELI Workspace", "L4-ZONE"), BASE);
   const target = parsed.targetsById.get("dev-camera") as LabviewDeveloperLaunchTarget;
   const materialized = materializeLabviewDeveloperTarget(
@@ -82,7 +82,7 @@ entries:
   );
 });
 
-test("LabVIEW developer target requires all four ticket fields", () => {
+test("LabVIEW developer target requires all four target fields", () => {
   assert.throws(
     () =>
       parseConfig(

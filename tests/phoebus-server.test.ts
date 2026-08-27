@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import net from "node:net";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
+import { parseConfig } from "../src/main/config/load.ts";
 import {
   isSpawnReceiptAlive,
   PhoebusServerManager,
   PhoebusServerProcessStillRunningError,
   PhoebusServerUnreachableError,
   probeTcpPort,
-} from "../src/main/phoebus-server.ts";
+} from "../src/main/launch/phoebus-server.ts";
 import {
   assertPhoebusLayoutApplied,
   materializePhoebusTarget,
   PhoebusLayoutStartupError,
   type PhoebusServerPlan,
-} from "../src/main/phoebus-targets.ts";
+} from "../src/main/launch/phoebus.ts";
 import type { PhoebusLaunchTarget } from "../src/shared/types.ts";
 
 const BASE = { appRoot: "/app", configDir: "/config" };
@@ -55,7 +55,7 @@ entries:
   );
 
   assert.equal(plans.server.command, "/opt/phoebus/phoebus.sh");
-  assert.deepEqual(plans.server.args, ["-server", "4918"]);
+  assert.deepEqual(plans.server.args, ["-server", "4918", "-nosplash"]);
   assert.equal(plans.server.port, 4918);
   assert.equal(plans.server.startupTimeoutMs, 1234);
   assert.equal(plans.server.resourceReadyDelayMs, 4321);
@@ -96,6 +96,7 @@ entries:
   assert.deepEqual(plans[0].server.args, [
     "-server",
     "4918",
+    "-nosplash",
     "-settings",
     "C:\\CSS GUIs\\site settings.properties",
   ]);
@@ -137,6 +138,7 @@ entries:
   assert.deepEqual(plans.server.args, [
     "-server",
     "4918",
+    "-nosplash",
     "-layout",
     "C:\\CSS GUIs\\alarm layout.memento",
   ]);
@@ -245,9 +247,11 @@ entries:
   }
   // Nothing platform-dependent here: a URI resource keeps its own query and
   // gains the app name.
+  // The selector leads and the resource's own query follows, which is the order
+  // the site's launcher guide specifies and Phoebus expects.
   assert.equal(
     remote.openResource?.args?.at(-1),
-    "https://panels.invalid/main.bob?mode=operator&app=%3Capp-name-from-list%3E",
+    "https://panels.invalid/main.bob?app=%3Capp-name-from-list%3E&mode=operator",
   );
 });
 
@@ -640,4 +644,119 @@ test("an owned live server keeps blocking a duplicate when its identity still ma
     manager.ensureServer(plan, startServer),
     PhoebusServerProcessStillRunningError,
   );
+});
+
+// The site's launcher guide is explicit: "Put app=... first, then macros
+// (&P=...&M1=...)". Phoebus reads app first and treats the rest as display
+// macros, so appending app last is not equivalent.
+test("the app selector comes first and macros follow in their original order", () => {
+  const parsed = parseConfig(
+    `
+local:
+  cssGuiRoot: 'C:\\Workspaces\\css-gui'
+  phoebus: { installRoot: 'C:\\CSS Phoebus\\product-5.0.2', serverPort: 4918 }
+entries:
+  - id: ad
+    name: AreaDetector
+    target:
+      kind: phoebus
+      resource: 'panel/ADTop.bob?P=13SIM1:&R=cam1:'
+      app: display_runtime
+`,
+    BASE,
+  );
+  const plans = materializePhoebusTarget(
+    parsed.targetsById.get("ad") as PhoebusLaunchTarget,
+    parsed.context,
+    undefined,
+    "win32",
+  );
+  assert.equal(
+    plans.openResource?.args?.at(-1),
+    "file:///C:/Workspaces/css-gui/panel/ADTop.bob?app=display_runtime&P=13SIM1:&R=cam1:",
+  );
+});
+
+// An EPICS prefix almost always ends in a colon. Re-encoding it to %3A changes
+// what the panel is handed, for a character that is legal in a query anyway.
+test("macro values are passed through without being re-encoded", () => {
+  const parsed = parseConfig(
+    `
+local:
+  cssGuiRoot: /srv/css
+  phoebus: { installRoot: /opt/phoebus, serverPort: 4918 }
+entries:
+  - id: m
+    name: M
+    target: { kind: phoebus, resource: 'p.bob?P=PLANT:&M1=AXIS01', app: display_runtime }
+`,
+    BASE,
+  );
+  const plans = materializePhoebusTarget(
+    parsed.targetsById.get("m") as PhoebusLaunchTarget,
+    parsed.context,
+    undefined,
+    "linux",
+  );
+  const resource = plans.openResource?.args?.at(-1) ?? "";
+  assert.match(resource, /\?app=display_runtime&P=PLANT:&M1=AXIS01$/);
+  assert.doesNotMatch(resource, /%3A/);
+});
+
+// A resource that already names an app must not end up with two.
+test("an app already in the resource is replaced, not duplicated", () => {
+  const parsed = parseConfig(
+    `
+local:
+  cssGuiRoot: /srv/css
+  phoebus: { installRoot: /opt/phoebus, serverPort: 4918 }
+entries:
+  - id: m
+    name: M
+    target: { kind: phoebus, resource: 'p.bob?app=databrowser&P=X', app: display_runtime }
+`,
+    BASE,
+  );
+  const plans = materializePhoebusTarget(
+    parsed.targetsById.get("m") as PhoebusLaunchTarget,
+    parsed.context,
+    undefined,
+    "linux",
+  );
+  const resource = plans.openResource?.args?.at(-1) ?? "";
+  assert.equal((resource.match(/app=/g) ?? []).length, 1);
+  assert.match(resource, /\?app=display_runtime&P=X$/);
+});
+
+// Dropping URLSearchParams stopped `P=13SIM1:` becoming `P=13SIM1%3A`, but it
+// also stopped encoding anything at all. A space produces a URI Phoebus rejects,
+// and a '#' is swallowed as a fragment before it is read as a macro.
+test("macro characters that break a URI are encoded, and only those", () => {
+  const parsed = parseConfig(
+    `
+local:
+  cssGuiRoot: /srv/css
+  phoebus: { installRoot: /opt/phoebus, serverPort: 4918 }
+entries:
+  - id: m
+    name: M
+    target: { kind: phoebus, resource: 'p.bob?LABEL=Beam Line&P=13SIM1:&TAG=a#b', app: display_runtime }
+`,
+    BASE,
+  );
+  const resource =
+    materializePhoebusTarget(
+      parsed.targetsById.get("m") as PhoebusLaunchTarget,
+      parsed.context,
+      undefined,
+      "linux",
+    ).openResource?.args?.at(-1) ?? "";
+
+  assert.match(resource, /LABEL=Beam%20Line/);
+  assert.match(resource, /TAG=a%23b/);
+  // The colon in an EPICS prefix is legal and must survive untouched.
+  assert.match(resource, /P=13SIM1:/);
+  assert.doesNotMatch(resource, /%3A/);
+  // app still leads.
+  assert.match(resource, /\?app=display_runtime&/);
 });

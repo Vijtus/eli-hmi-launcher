@@ -17,9 +17,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultDeps } from "../src/main/config-repo.ts";
-import { redactError } from "../src/main/config-repo-auth.ts";
-import { readDynamicConfigEnv, resolveDynamicConfig } from "../src/main/dynamic-config.ts";
+import { defaultDeps } from "../src/main/catalog/repo.ts";
+import { redactError } from "../src/main/catalog/auth.ts";
+import { readDynamicConfigEnv, resolveDynamicConfig } from "../src/main/catalog/load.ts";
 import { startGitHttpServer, hasGitHttpBackend } from "../tests/helpers/git-http-server.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -65,19 +65,17 @@ const HOSTS: Record<string, string> = {
   "DEMO-Station-01": `# Operator station in the DEMO zone.
 zone: DEMO
 P4-workspace: \${APP_ROOT}/examples/labview-contract-workspace
-css-gui: \${APP_ROOT}/examples/phoebus-local
+css-gui: \${APP_ROOT}/tests/acceptance/assets
 css-install: \${APP_ROOT}/.local/phoebus
 local:
   monitoring:
     reconcileIntervalMs: 2000
 `,
-  "DEMO-Beamline-02": `# Beamline station in the BEAMLINE zone. Also demonstrates hmi-server:
-# a bare host:port becomes http://…/api/lifecycle/v1 with the plain-HTTP opt-in
-# recorded explicitly. The service is not running, so the launcher reports the
-# lifecycle API as unavailable — which is the point: it is wired, and honest.
+  "DEMO-Beamline-02": `# Beamline station in the BEAMLINE zone. The hmi-server
+# key is retained as a named host only; the launcher does not infer an API contract.
 zone: BEAMLINE
 P4-workspace: \${APP_ROOT}/examples/labview-contract-workspace
-css-gui: \${APP_ROOT}/examples/phoebus-local
+css-gui: \${APP_ROOT}/tests/acceptance/assets
 css-install: \${APP_ROOT}/.local/phoebus
 hmi-server: 127.0.0.1:8765
 local:
@@ -85,8 +83,6 @@ local:
     # Required by any \`css:\` (phoebus) entry in this host's zone.
     serverPort: 14918
     startupTimeoutMs: 30000
-  hmiApi:
-    heartbeatIntervalMs: 30000
   monitoring:
     reconcileIntervalMs: 2000
 `,
@@ -98,7 +94,7 @@ const ZONES: Record<string, string> = {
 # Launcher-level settings owned by the zone, so a workstation does not
 # hand-maintain them. The host file may override any of these.
 launcher:
-  appName: L4 Launcher — DEMO zone
+  siteName: DEMO zone
   quickActions:
     - id: data-browser
       label: Data Browser
@@ -169,7 +165,7 @@ css:
 # so switching --host visibly changes what the operator sees.
 
 launcher:
-  appName: L4 Launcher — BEAMLINE zone
+  siteName: BEAMLINE zone
   quickActions:
     - id: data-browser
       label: Data Browser
@@ -208,7 +204,7 @@ css:
     resource: \${local.cssGuiRoot}/temperature.bob
     technology: Cooling
     section: BL1
-    note: Needs a local Phoebus — see tools/phoebus-local/bootstrap.sh
+    note: Needs a local Phoebus — see tests/acceptance/phoebus/bootstrap.sh
 `,
 };
 
@@ -369,7 +365,7 @@ async function main(): Promise<number> {
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      ELI_LAUNCHER_CONFIG: path.join(REPO_ROOT, "config", "git-config-demo.yaml"),
+      ELI_LAUNCHER_CONFIG: path.join(REPO_ROOT, "tools", "git-config-demo.yaml"),
       ELI_LAUNCHER_CONFIG_REPO_URL: url,
       ELI_LAUNCHER_CONFIG_CACHE_DIR: cacheDir,
       ELI_LAUNCHER_CONFIG_HOSTNAME: options.host,

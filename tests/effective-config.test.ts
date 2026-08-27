@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
-import { buildEffectiveConfig, redactDeep } from "../src/main/effective-config.ts";
+import { parseConfig } from "../src/main/config/load.ts";
+import { buildEffectiveConfig, redactDeep } from "../src/main/catalog/effective.ts";
 
 const BASE = { appRoot: "/tmp/app", configDir: "/tmp/cfg" };
 
@@ -35,11 +35,9 @@ test("non-sensitive values pass through unchanged", () => {
 
 test("the dump carries the resolved entries, targets, and machine settings", () => {
   const parsed = parseConfig(
-    `appName: L4 Launcher
+    `siteName: TESTZ
 local:
   zoneSymbol: TESTZ
-  hmiApi:
-    authTokenEnv: ELI_HMI_LIFECYCLE_TOKEN
 entries:
   - id: a
     name: A
@@ -48,7 +46,8 @@ entries:
     BASE,
   );
   const dump = buildEffectiveConfig(parsed) as Record<string, unknown>;
-  assert.equal(dump["appName"], "L4 Launcher");
+  assert.equal(dump["productName"], "ELI HMI Launcher");
+  assert.equal(dump["siteName"], "TESTZ");
   assert.equal(dump["entryCount"], 1);
   const entries = dump["entries"] as Record<string, unknown>[];
   assert.equal(entries[0]?.["id"], "a");
@@ -57,7 +56,7 @@ entries:
 });
 
 test("the dump includes config repo provenance when the feature is active", () => {
-  const parsed = parseConfig(`appName: L4\nentries: []\n`, BASE);
+  const parsed = parseConfig(`siteName: L4\nentries: []\n`, BASE);
   const dump = buildEffectiveConfig(parsed, {
     url: "https://git.example.org/eli-hmi-config.git",
     ref: "main",
@@ -79,7 +78,7 @@ test("the dump includes config repo provenance when the feature is active", () =
 });
 
 test("a token pasted into the repo URL is redacted in the dump", () => {
-  const parsed = parseConfig(`appName: L4\nentries: []\n`, BASE);
+  const parsed = parseConfig(`siteName: L4\nentries: []\n`, BASE);
   const dump = buildEffectiveConfig(parsed, {
     url: "https://ghp_secrettoken@git.example.org/c.git",
     ref: "main",

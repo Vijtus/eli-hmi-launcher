@@ -25,7 +25,8 @@ test("runtime-state column is active and wired to main-process observations", as
   const css = await rendererSource("styles.css");
   const app = await rendererSource("app.ts");
   const preload = await readFile(new URL("../src/preload/index.ts", import.meta.url), "utf8");
-  const registry = await readFile(new URL("../src/main/runtime-registry.ts", import.meta.url), "utf8");
+  const ipc = await readFile(new URL("../src/shared/ipc.ts", import.meta.url), "utf8");
+  const registry = await readFile(new URL("../src/main/runtime/registry.ts", import.meta.url), "utf8");
 
   assert.match(html, /data-runtime-state-column="active"/);
   assert.match(html, /<th\s+scope="col">State<\/th>/);
@@ -34,22 +35,23 @@ test("runtime-state column is active and wired to main-process observations", as
   assert.match(app, /onRuntimeStates\(applyRuntimeSnapshot\)/);
   assert.match(app, /runtime\.status === "shared"/);
   assert.match(registry, /individual panel presence is not observable/);
-  assert.match(preload, /launcher:get-runtime-states/);
-  assert.match(preload, /launcher:runtime-states/);
+  assert.match(preload, /IPC\.getRuntimeStates/);
+  assert.match(preload, /IPC\.runtimeStates/);
+  assert.match(ipc, /launcher:get-runtime-states/);
+  assert.match(ipc, /launcher:runtime-states/);
 });
 
-test("navigation keeps one scroll region, sticky headings, and accessible custom comboboxes", async () => {
+test("navigation uses native filters, semantic launch buttons, and one scroll region", async () => {
   const html = await rendererSource("index.html");
   const css = await rendererSource("styles.css");
-  const combobox = await rendererSource("combobox.ts");
+  const app = await rendererSource("app.ts");
 
-  assert.doesNotMatch(html, /<select\b/i);
-  assert.match(css, /html\s*\{[\s\S]*?overflow:\s*hidden/);
-  assert.match(css, /body\s*\{[\s\S]*?overflow:\s*hidden/);
+  assert.match(html, /<select[^>]+id="technology-filter"/i);
+  assert.match(html, /<select[^>]+id="section-filter"/i);
+  assert.match(css, /html,\s*body\s*\{[\s\S]*?overflow:\s*hidden/);
   assert.match(css, /\.table-panel\s*\{[\s\S]*?overflow:\s*auto/);
   assert.match(css, /\.table-panel thead th\s*\{[\s\S]*?position:\s*sticky/);
-  assert.match(combobox, /setAttribute\("role",\s*"combobox"\)/);
-  assert.match(combobox, /setAttribute\("aria-expanded"/);
-  assert.match(combobox, /setAttribute\("aria-activedescendant"/);
-  assert.match(combobox, /setAttribute\("aria-selected"/);
+  assert.match(app, /createElement\("button"\)/);
+  assert.match(app, /launch-button/);
+  assert.doesNotMatch(app, /tabIndex\s*=|event\.key\s*===\s*"Enter"/);
 });

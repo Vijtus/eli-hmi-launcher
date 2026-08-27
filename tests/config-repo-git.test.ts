@@ -10,13 +10,13 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { TOKEN_PASSWORD } from "../src/main/config-repo-auth.ts";
+import { TOKEN_PASSWORD } from "../src/main/catalog/auth.ts";
 import {
   defaultDeps,
   ensureConfigRepo,
   worktreeDir,
   type ConfigRepoDeps,
-} from "../src/main/config-repo.ts";
+} from "../src/main/catalog/repo.ts";
 import { hasGitHttpBackend, startGitHttpServer } from "./helpers/git-http-server.ts";
 
 const TOKEN = "ghp_SUPERSECRETTOKEN123456789";
@@ -106,7 +106,7 @@ test("first run clones over real smart HTTP using an in-memory token", { skip },
   }
 });
 
-// NFR1 evidence, asserted rather than described.
+// Assert credential behavior rather than documenting it only.
 test("the token never reaches .git/config or any cached file", { skip }, async () => {
   const fixture = buildFixture();
   const server = await startGitHttpServer(fixture.serveDir, { requireAuthorization: BASIC });
@@ -264,7 +264,7 @@ test("a bad ref fails with a named, token-free error", { skip }, async () => {
   }
 });
 
-test("an anonymous clone works against a repo that needs no token (FR1)", { skip }, async () => {
+test("an anonymous clone works against a repo that needs no token", { skip }, async () => {
   const fixture = buildFixture();
   const server = await startGitHttpServer(fixture.serveDir); // no auth required
   const cacheDir = mkdtempSync(path.join(os.tmpdir(), "eli-git-cache-"));

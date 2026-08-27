@@ -4,7 +4,7 @@ import {
   folderLaunchError,
   processLaunchError,
   webLaunchError,
-} from "../src/main/launch-errors.ts";
+} from "../src/main/launch/errors.ts";
 
 function errno(code: string, message: string): NodeJS.ErrnoException {
   const error = new Error(message) as NodeJS.ErrnoException;

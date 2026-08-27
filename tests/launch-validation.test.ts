@@ -8,7 +8,7 @@ import {
   assertFolderPathUsable,
   assertResolvedValueNotEmpty,
   assertWorkingDirectoryUsable,
-} from "../src/main/launch-validation.ts";
+} from "../src/main/launch/validation.ts";
 
 const skipPosixPermissionTests =
   process.platform === "win32" ||

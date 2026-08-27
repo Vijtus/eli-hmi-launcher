@@ -7,7 +7,7 @@
 // Exits 0 when valid, 1 when invalid (suitable for CI / pre-deploy checks).
 
 import path from "node:path";
-import { loadConfigFromFile } from "../src/main/config";
+import { loadConfigFromFile } from "../src/main/config/load";
 
 const arg = process.argv[2];
 const target = arg ? path.resolve(arg) : path.resolve("config/launcher.yaml");
@@ -27,11 +27,6 @@ try {
     local.phoebus.startupTimeoutMs !== undefined && "phoebus.startupTimeoutMs",
     local.phoebus.resourceReadyDelayMs !== undefined && "phoebus.resourceReadyDelayMs",
     Object.keys(local.hosts).length > 0 && `hosts(${Object.keys(local.hosts).length})`,
-    local.hmiApi.baseUrl && "hmiApi.baseUrl",
-    local.hmiApi.stationId && "hmiApi.stationId",
-    local.hmiApi.authTokenEnv && "hmiApi.authTokenEnv",
-    local.hmiApi.requestTimeoutMs !== undefined && "hmiApi.requestTimeoutMs",
-    local.hmiApi.heartbeatIntervalMs !== undefined && "hmiApi.heartbeatIntervalMs",
     local.monitoring.reconcileIntervalMs !== undefined && "monitoring.reconcileIntervalMs",
   ].filter(Boolean);
   const restrictedLaunches = [...cfg.accessPoliciesById.values()].filter(
@@ -40,7 +35,8 @@ try {
   process.stdout.write(
     [
       `OK  ${target}`,
-      `  appName        : ${cfg.appName}`,
+      `  productName    : ${cfg.productName}`
+      ,`  siteName       : ${cfg.siteName ?? "(none)"}`,
       `  entries        : ${cfg.rows.length}`,
       `  quickActions   : ${cfg.quickActions.length}`,
       `  moreActions    : ${cfg.moreActions.length}`,

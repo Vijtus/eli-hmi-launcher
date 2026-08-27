@@ -1,4 +1,4 @@
-// FR7 — print the fully-resolved effective configuration for on-site
+// Print the fully resolved effective configuration for on-site
 // troubleshooting, using the exact loader the launcher uses, without Electron.
 //
 //   npm run dump-config                 # uses config/launcher.yaml + the env vars
@@ -7,11 +7,11 @@
 // Secrets are redacted. Exits 0 on success, 1 with a named error on failure.
 
 import path from "node:path";
-import { loadConfigFromFile } from "../src/main/config";
-import { defaultDeps } from "../src/main/config-repo";
-import { redactError } from "../src/main/config-repo-auth";
-import { buildEffectiveConfig } from "../src/main/effective-config";
-import { readDynamicConfigEnv, resolveDynamicConfig } from "../src/main/dynamic-config";
+import { loadConfigFromFile } from "../src/main/config/load";
+import { defaultDeps } from "../src/main/catalog/repo";
+import { redactError } from "../src/main/catalog/auth";
+import { buildEffectiveConfig } from "../src/main/catalog/effective";
+import { readDynamicConfigEnv, resolveDynamicConfig } from "../src/main/catalog/load";
 
 async function main(): Promise<void> {
   const arg = process.argv[2];

@@ -1,0 +1,61 @@
+siteName: Local Phoebus acceptance
+
+local:
+  cssGuiRoot: ${APP_ROOT}/tests/acceptance/assets
+  phoebus:
+    executable: ${APP_ROOT}/tests/acceptance/phoebus/phoebus.sh
+    serverPort: 14918
+    settingsFile: ${APP_ROOT}/tests/acceptance/config/phoebus.properties
+    layoutFile: ${APP_ROOT}/tests/acceptance/assets/local-alarm-layout.memento
+    startupTimeoutMs: 60000
+    # Measured on the locked 2026-07-20 build: its TCP listener opens before
+    # the JavaFX resource argument handler is installed.
+    resourceReadyDelayMs: 8000
+  monitoring:
+    reconcileIntervalMs: 1000
+
+security:
+  allowedCommandRoots:
+    - ${APP_ROOT}/tests/acceptance/phoebus
+  allowBareCommands: false
+
+entries:
+  - id: local-phoebus-temperature
+    name: Laser / Regenerator Overview
+    technology: [Laser]
+    section: [Local acceptance]
+    platform: Phoebus
+    rmc: --
+    note: Read-only system status, diagnostics, and key measurements from the supplied mock IOC.
+    target:
+      kind: phoebus
+      resource: temperature.bob
+
+  - id: local-phoebus-state
+    name: Flashlamp / Timing Control
+    technology: [Laser]
+    section: [Local acceptance]
+    platform: Phoebus
+    rmc: --
+    note: Structured timing controls and the seven-by-two flashlamp state matrix; writes affect the mock only.
+    target:
+      kind: phoebus
+      resource: state.bob
+
+  - id: local-phoebus-flow
+    name: Cooling Overview
+    technology: [Cooling]
+    section: [Local acceptance]
+    platform: Phoebus
+    rmc: --
+    note: Primary and legacy chiller measurements, error flags, and the deliberate chiller-13 MINOR alarm.
+    target:
+      kind: phoebus
+      resource: flow.bob
+
+moreActions:
+  - id: local-phoebus-alarm-layout
+    label: Local alarm layout
+    target:
+      kind: phoebus
+      layout: true

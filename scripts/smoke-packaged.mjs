@@ -220,7 +220,7 @@ async function main() {
           "parse its config. Check the launcher log.",
       );
     }
-    info(`Catalog loaded: ${config.rows.length} rows, appName=${JSON.stringify(config.appName)}`);
+    info(`Catalog loaded: ${config.rows.length} rows, productName=${JSON.stringify(config.productName)}, siteName=${JSON.stringify(config.siteName ?? null)}`);
 
     const entry = config.rows[0];
     info(`Launching first entry: ${entry.id} (${entry.name})`);

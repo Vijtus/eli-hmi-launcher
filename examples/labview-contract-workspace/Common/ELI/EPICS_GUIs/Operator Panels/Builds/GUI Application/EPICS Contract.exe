@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-# Executable POSIX fixture for the CSI-847 launch contract. This is not a
+# Executable POSIX fixture for the LabVIEW EPICS launch contract. This is not a
 # LabVIEW binary and must not be used as evidence that LabVIEW ran.
 : "${ELI_LABVIEW_FIXTURE_CAPTURE_DIR:?ELI_LABVIEW_FIXTURE_CAPTURE_DIR is required}"
 

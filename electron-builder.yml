@@ -20,19 +20,14 @@ files:
 # Shipped OUTSIDE app.asar, beside it in <resources>, because config files
 # reference them as real filesystem paths via ${APP_ROOT} and the launcher spawns
 # them. Anything inside the asar cannot be stat'd or executed.
-# See src/main/app-paths.ts.
+# See src/main/config/paths.ts.
 # Deliberately narrow. An installed launcher should contain what it needs to
 # run and nothing an operator has to wonder about: the development fixtures and
 # the acceptance-only configs belong in the repository, not in Program Files.
 extraResources:
-  # The default catalog, a worked real-deployment example, and the blank
-  # template an operator starts from.
+  # Default bootstrap config. Deployment-specific configs are not packaged here.
   - from: config/launcher.yaml
     to: config/launcher.yaml
-  - from: config/launcher.example-real.yaml
-    to: config/launcher.example-real.yaml
-  - from: config/launcher.blank.yaml
-    to: config/launcher.blank.yaml
   # Referenced by the default catalog, so the app is clickable out of the box.
   - from: examples/launchers
     to: examples/launchers
@@ -66,6 +61,12 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: ELI HMI Launcher
   artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  # Installing over an existing copy already removes it first: electron-builder's
+  # NSIS target runs the previous uninstaller itself. No option is needed for
+  # that, and `deleteAppDataOnUninstall` is NOT it — it deletes the user's data
+  # on uninstall, which for this app is the config-repo cache, the catalog cache
+  # and the logs. It also applies only to one-click installers, and this is not
+  # one. Left out deliberately.
 
 portable:
   artifactName: ${productName}-${version}-${arch}-portable.${ext}
@@ -78,7 +79,7 @@ mac:
       arch: [x64, arm64]
     - target: zip
       arch: [x64, arm64]
-  # Unsigned builds: see docs/INSTALL.md for the Gatekeeper steps operators need.
+  # Unsigned builds: see docs/troubleshooting.md for packaging trust warnings.
   # To sign later, drop `identity` and supply CSC_LINK / CSC_KEY_PASSWORD — the
   # entitlements and hardened runtime below are already correct for that.
   identity: null
@@ -93,9 +94,9 @@ dmg:
 linux:
   icon: build/icons
   category: Science
-  synopsis: Config-driven launcher for L4 control-system GUIs
+  synopsis: Config-driven launcher for control-system GUIs
   description: >-
-    Desktop launcher for ELI L4 control-system GUIs. Presents a searchable,
+    Desktop launcher for ELI control-system GUIs. Presents a searchable,
     filterable table built from a YAML catalog and starts LabVIEW, Phoebus/CSS
     and web HMIs with per-entry access policy enforcement.
   desktop:

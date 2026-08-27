@@ -44,7 +44,7 @@ test(
     // labview-contract-capture.ts requires that identity to be Linux start
     // ticks (/^\d+$/). That makes executing them Linux-only, not merely
     // non-Windows: on macOS the fixture exits 70 because there is no procfs.
-    // src/main/process-inspector.ts makes the same Linux-vs-other-POSIX split.
+    // src/main/runtime/process.ts makes the same Linux-vs-other-POSIX split.
     if (process.platform !== "linux") {
       t.skip(`Contract fixtures need /proc start ticks; not available on ${process.platform}`);
       return;

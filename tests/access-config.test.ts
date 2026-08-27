@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
+import { parseConfig } from "../src/main/config/load.ts";
 
 const BASE = { appRoot: "/tmp/app", configDir: "/tmp/cfg" };
 

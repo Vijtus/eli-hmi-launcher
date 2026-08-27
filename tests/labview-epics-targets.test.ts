@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
-import { materializeLabviewEpicsTarget } from "../src/main/labview-targets.ts";
-import { launchMaterializedProcess } from "../src/main/native-launcher.ts";
+import { parseConfig } from "../src/main/config/load.ts";
+import { materializeLabviewEpicsTarget } from "../src/main/launch/labview.ts";
+import { launchMaterializedProcess } from "../src/main/launch/native.ts";
 import type { LabviewEpicsLaunchTarget } from "../src/shared/types.ts";
 
 const BASE = { appRoot: "/app", configDir: "/config" };
@@ -25,7 +25,7 @@ entries:
 `;
 }
 
-test("LabVIEW EPICS target builds the ticket argv with its distinct two-argument order", () => {
+test("LabVIEW EPICS target builds its distinct two-argument order", () => {
   const parsed = parseConfig(epicsConfig("C:\\ELI Workspace", "L4-ZONE"), BASE);
   const target = parsed.targetsById.get("epics-overview") as LabviewEpicsLaunchTarget;
   const materialized = materializeLabviewEpicsTarget(
@@ -81,7 +81,7 @@ entries:
   );
 });
 
-test("LabVIEW EPICS target requires all three ticket fields", () => {
+test("LabVIEW EPICS target requires all three target fields", () => {
   assert.throws(
     () =>
       parseConfig(
