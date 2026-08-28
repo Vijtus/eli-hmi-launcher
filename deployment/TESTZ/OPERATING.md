@@ -5,6 +5,51 @@ on that machine, not inferred.
 
 ---
 
+## 0. Where the files come from
+
+Builds come from a **GitHub release** — never from someone's folder, an email
+attachment, or whatever `.exe` happens to be lying on a stick. Every artifact in
+a release was built by CI on a real Windows, macOS and Linux runner from a
+tagged commit, so "which build is this?" always has an answer.
+
+    https://github.com/Vijtus/eli-hmi-launcher-testz/releases/latest
+
+**TESTZ-OPR04 has no internet.** It reaches `gitlab.eli-beams.eu` and nothing
+else, so it cannot fetch from GitHub itself. The release is therefore staged on
+the USB stick, in one folder, exactly as downloaded:
+
+    0 - RELEASE v0.4.0-testz (USE THIS)\
+      ELI.HMI.Launcher-0.4.0-x64-setup.exe
+      ELI.HMI.Launcher-0.4.0-x64-portable.exe
+      launcher.yaml
+      panels-for-css-gui\TESTZ\        pm.bob, centroids.bob
+      SHA256SUMS.txt
+      MANUAL.md                        this document
+
+Work from that folder. The `.exe` files were verified byte-for-byte against the
+digests GitHub publishes for the release, and `SHA256SUMS.txt` lets you check
+them again after any copy:
+
+```
+certutil -hashfile "ELI.HMI.Launcher-0.4.0-x64-setup.exe" SHA256
+```
+
+The other numbered folders on the stick are the previous working set, kept as a
+fallback. Ignore them unless folder 0 goes wrong.
+
+### Taking the .exe and the launcher.yaml together
+
+They are a matched pair. A `launcher.yaml` from an older release will not load in
+a newer build and vice versa — see the `siteName` warning in step 2. Always take
+both from the same release folder.
+
+### When this moves upstream
+
+`eli-eric/eli-hmi-launcher` already carries the release workflow, but it has
+never been tagged, so it has no releases yet. Once someone with write access
+pushes a tag, GitHub builds and attaches the installers automatically and that
+becomes the URL above. Nothing else in this document changes.
+
 ## 1. Install
 
 Two ways. Pick one.
@@ -257,17 +302,77 @@ repository successfully, despite having no internet access. What is still
 missing there is the host file and the filled-in `css:`/`web:` groups — both are
 prepared under `deployment/TESTZ/config-repo/`.
 
-When it is set up, these environment variables switch it on:
+### How the token is supplied
+
+**Only through environment variables.** There is no `token:` key in
+`launcher.yaml`, deliberately — a secret in the config file is a secret that gets
+committed, mailed around, and copied onto the next machine.
 
 ```
 ELI_LAUNCHER_CONFIG_REPO_URL       https://gitlab.eli-beams.eu/lcs/eli-hmi-config.git
 ELI_LAUNCHER_CONFIG_REPO_USERNAME  a GitLab username
-ELI_LAUNCHER_CONFIG_REPO_TOKEN     a read-only deploy token
+ELI_LAUNCHER_CONFIG_REPO_TOKEN     the token
 ELI_LAUNCHER_CONFIG_REPO_SUBPATH   launcher
+ELI_LAUNCHER_CONFIG_REPO_REF       branch or tag; unset follows the remote's
+                                   own default branch
 ```
 
-`security:` and `access:` stay in the local file regardless. Git is built into
-the launcher, so the machine does not need git installed.
+Set them per-user on Windows so they survive a reboot and stay out of any script:
+
+```
+setx ELI_LAUNCHER_CONFIG_REPO_URL "https://gitlab.eli-beams.eu/lcs/eli-hmi-config.git"
+setx ELI_LAUNCHER_CONFIG_REPO_USERNAME "wiktor"
+setx ELI_LAUNCHER_CONFIG_REPO_TOKEN "glpat-…"
+setx ELI_LAUNCHER_CONFIG_REPO_SUBPATH "launcher"
+```
+
+`setx` writes to the user's environment; open a **new** window afterwards, since
+the current one keeps the old values. Or set them through
+*System → Advanced → Environment Variables* if you would rather not have the
+token in command history.
+
+**Username matters on GitLab.** Two arrangements are supported and the username
+decides which:
+
+| `…_USERNAME` | What happens | Use for |
+|---|---|---|
+| not set | the token becomes the HTTP Basic *username*, with a constant filler as the password | GitHub, Gitea, Forgejo |
+| set | that username, with the token as the password | **GitLab**, Bitbucket |
+
+A **GitLab deploy token** is issued as a username/token pair and cannot
+authenticate the first way at all, so `…_USERNAME` is required for one. A GitLab
+personal access token works with any username — `oauth2` is the documented
+choice.
+
+### What happens to the token
+
+It is handed to the bundled git client through an in-memory callback and becomes
+an `Authorization: Basic` header for the duration of the request only. It does
+not reach:
+
+- the process table or `argv` — no child process is spawned at all
+- the remote URL written into `.git/config` — the clean URL is stored
+- any log line or field report — everything leaving that module is passed
+  through the redactor first, including git's own error text
+
+`tests/config-repo-auth.test.ts` asserts each of those, so it stays true.
+
+Token auth over HTTPS is not subject to interactive 2FA on any of these forges —
+the token *is* the second factor — so an unattended control-room machine never
+gets a prompt it cannot answer.
+
+### If it does not work
+
+`401` means the token was rejected: expired, revoked, or mistyped. `403` means
+valid but not permitted. `404` can mean either the path is wrong or the token
+cannot see the project.
+
+A `403` from the REST API while `git clone` succeeds is **not** a fault: a token
+with `read_repository` but not `api` scope behaves exactly that way, and that is
+the correct scope for this.
+
+`security:` and `access:` stay in the local file regardless of any of this. Git
+is built into the launcher, so the machine does not need git installed.
 
 ---
 
