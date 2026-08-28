@@ -269,13 +269,14 @@ main {
   padding: 0.1rem 0.4rem;
 }
 
+/* The panel scrolls; it does not draw the frame. Putting the border here framed
+   whatever space was left over, so a catalog with three entries showed three
+   rows inside a box the height of the window. The border belongs on the table,
+   which is as tall as its rows. */
 .table-panel {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
-  border-right: 1px solid #ffffff;
-  border-bottom: 1px solid #ffffff;
-  border-left: 1px solid #ffffff;
 }
 
 table {
@@ -283,11 +284,14 @@ table {
   border-collapse: collapse;
   table-layout: fixed;
   background: #000000;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+  border-left: 1px solid #ffffff;
 }
 
 th,
 td {
-  padding: 0.48rem 0.55rem;
+  padding: 0.62rem 0.7rem;
   border-top: 1px solid #ffffff;
   border-right: 1px solid #ffffff;
   vertical-align: middle;
@@ -339,8 +343,8 @@ tbody tr:hover .launch-button {
 
 .launch-button {
   width: 100%;
-  min-height: 2.65rem;
-  padding: 0.48rem 0.55rem;
+  min-height: 2.9rem;
+  padding: 0.62rem 0.7rem;
   border: 0;
   background: #000000;
   color: #ffffff;
@@ -364,11 +368,14 @@ tbody tr:hover .launch-button {
   text-align: center;
 }
 
-.column-name { width: 18%; }
-.column-technology { width: 13%; }
-.column-section { width: 11%; }
-.column-platform { width: 9%; }
-.column-rmc { width: 10%; }
+/* Proportioned so the note keeps the room it needs. The middle columns hold
+   short, repeated values -- "Vacuum", "LabVIEW", "RMC403" -- and were taking
+   width from the one column whose content is a sentence. */
+.column-name { width: 19%; }
+.column-technology { width: 10%; }
+.column-section { width: 9%; }
+.column-platform { width: 8%; }
+.column-rmc { width: 8%; }
 .column-runtime-state { width: var(--runtime-state-column-width); }
 .column-note { width: auto; }
 
