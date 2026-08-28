@@ -66,10 +66,16 @@ The window lists every entry with a search box and filters. On TESTZ-OPR04 that
 is 12 rows: 3 Phoebus, 7 LabVIEW, 2 web, plus a **Phoebus** button top-right and
 a **More…** menu.
 
-Click a row to launch it. Nothing else is needed.
+**Click anywhere on the row** to launch it — the whole row is the control, not
+just the name. The row inverts to black under the pointer, so it is unambiguous
+which one will start.
 
-Check the strip at the top of the window. It should name the file you just
-copied. If it says `CONFIG (built in, not editable)`, go back to step 2.
+The columns are what the catalog describes: name, technology, section, platform,
+RMC and note.
+
+The footer names the configuration file in use, with **Open folder** beside it.
+It should be the file you just copied; if it reads `CONFIG (built in, not
+editable)`, go back to step 2.
 
 ### The Phoebus rows need one more thing, for now
 
@@ -244,30 +250,97 @@ so the launched process is long gone by the ten-second mark.
 
 ---
 
-## 7. Where the configuration is heading
+## 7. Reading the catalog from GitLab instead
 
 Today `launcher.yaml` is copied onto each machine by hand. The launcher can
 instead clone it from `gitlab.eli-beams.eu/lcs/eli-hmi-config` at startup,
-layering `zone/TESTZ.yaml` (shared) over `host/TESTZ-OPR04.yaml` (per-machine),
-so a catalog change becomes a commit rather than a file copied to every
-workstation.
+layering `zone/TESTZ.yaml` (shared) over `host/<machine>.yaml` (per-machine), so
+a catalog change becomes a commit rather than a file copied to every workstation.
 
 Confirmed on 2026-08-27 that TESTZ-OPR04 reaches that GitLab and clones the
-repository successfully, despite having no internet access. What is still
-missing there is the host file and the filled-in `css:`/`web:` groups — both are
-prepared under `deployment/TESTZ/config-repo/`.
+repository successfully, despite having no internet access.
 
-When it is set up, these environment variables switch it on:
+### Set it up in the launcher
+
+Click **Configuration…** at the bottom right. No terminal, and nothing changes
+until you press Save.
 
 ```
-ELI_LAUNCHER_CONFIG_REPO_URL       https://gitlab.eli-beams.eu/lcs/eli-hmi-config.git
-ELI_LAUNCHER_CONFIG_REPO_USERNAME  a GitLab username
-ELI_LAUNCHER_CONFIG_REPO_TOKEN     a read-only deploy token
-ELI_LAUNCHER_CONFIG_REPO_SUBPATH   launcher
+Repository URL   https://gitlab.eli-beams.eu/lcs/eli-hmi-config.git
+Username         see below - GitLab needs one
+Token            typed hidden, stored encrypted
+More             folder inside the repo, branch, machine name
 ```
 
-`security:` and `access:` stay in the local file regardless. Git is built into
-the launcher, so the machine does not need git installed.
+**Test connection** performs a real clone rather than checking that the URL looks
+plausible. On success it names the host file and zone it resolved and how many
+entries they produced — which is also the quickest way to find out that a machine
+has no host file yet. **Save** restarts the launcher, because the catalog is
+resolved at startup.
+
+The token is kept through the operating system's own encryption — DPAPI on
+Windows — so it is bound to your account rather than sitting in an environment
+variable that every process you start can read. Where a system offers no such
+storage the screen says so and refuses to keep the token rather than writing it
+in clear.
+
+The token field renders empty even when one is stored, because it is never sent
+back to the window. Leaving it empty keeps what is there; type in it only to
+replace it.
+
+### The username is not optional on GitLab
+
+| `…_USERNAME` | What happens | For |
+|---|---|---|
+| not set | the token becomes the HTTP Basic *username* | GitHub, Gitea, Forgejo |
+| set | that username, token as the password | **GitLab**, Bitbucket |
+
+A GitLab **deploy token** is issued as a username/token pair and cannot
+authenticate the first way at all. A personal access token works with any
+username; `oauth2` is the documented choice.
+
+### Or set it from the environment, for an unattended rollout
+
+A deployment script does not click buttons. The same settings are read from the
+environment, and **the environment wins** over anything typed in the window — so
+a machine configured by a script cannot be quietly overridden later. The screen
+lists any variable that is currently overriding it.
+
+```
+setx ELI_LAUNCHER_CONFIG_REPO_URL "https://gitlab.eli-beams.eu/lcs/eli-hmi-config.git"
+setx ELI_LAUNCHER_CONFIG_REPO_USERNAME "oauth2"
+setx ELI_LAUNCHER_CONFIG_REPO_TOKEN "glpat-..."
+setx ELI_LAUNCHER_CONFIG_REPO_SUBPATH "launcher"
+```
+
+`setx` affects windows opened afterwards; the one you typed it in keeps the old
+values.
+
+### If the certificate is not trusted
+
+An internal CA is normal at a site like this, and Node — which the launcher uses
+to clone — carries its own list of authorities and does not read the Windows
+certificate store. So a certificate your browser accepts can still be rejected
+here, with `self signed certificate in certificate chain`.
+
+It is a trust problem, not a wrong URL or a bad token, and the launcher now says
+so. Export the issuing CA to a file and point at it:
+
+```
+setx NODE_EXTRA_CA_CERTS "C:\ELI\gitlab-ca.crt"
+```
+
+Do not turn certificate verification off to get past this.
+
+### What is still missing on the GitLab side
+
+`host/TESTZ-OPR04.yaml` does not exist there, and `zone/TESTZ.yaml` has empty
+`css:`, `web:` and `labview-epics:` groups — so a catalog pulled today would
+serve the seven LabVIEW rows and nothing else. Both files are prepared under
+`deployment/TESTZ/config-repo/` and need review and a commit.
+
+`security:` and `access:` are never read from the config repository regardless.
+Git is built into the launcher, so the machine does not need git installed.
 
 ---
 
