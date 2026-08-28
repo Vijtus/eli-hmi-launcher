@@ -366,12 +366,14 @@ tbody tr {
   text-align: left;
 }
 
-/* The focus ring belongs to the row, not to the name cell.
-   The clickable thing is the whole row, so a ring drawn around one cell of it
-   pointed at the wrong target: it looked as though only the name could be
-   activated, which is exactly the confusion the row-wide click was meant to
-   remove. The button keeps focus for the keyboard and screen reader; the row
-   draws the mark. */
+/* The name button opts out of the outline every other button gets.
+   That generic `button:hover` rule drew a white box around this button alone,
+   which on a full-width row looked like a half-finished outline round the first
+   cell -- and pointed at the wrong target, since the whole row is the control.
+   The button keeps focus for the keyboard and the screen reader; the row draws
+   the mark. */
+.launch-button:hover,
+.launch-button:focus,
 .launch-button:focus-visible {
   outline: none;
 }
@@ -385,20 +387,6 @@ tbody tr:focus-within td {
 tbody tr:focus-within .launch-button {
   background: #000000;
   color: #ffffff;
-}
-
-/* Drawn on the first and last cell so the ring reads as one box around the
-   whole row rather than seven boxes around seven cells. */
-tbody tr:focus-within td:first-child {
-  box-shadow: inset 2px 0 0 0 #ffffff, inset 0 2px 0 0 #ffffff, inset 0 -2px 0 0 #ffffff;
-}
-
-tbody tr:focus-within td:last-child {
-  box-shadow: inset -2px 0 0 0 #ffffff, inset 0 2px 0 0 #ffffff, inset 0 -2px 0 0 #ffffff;
-}
-
-tbody tr:focus-within td:not(:first-child):not(:last-child) {
-  box-shadow: inset 0 2px 0 0 #ffffff, inset 0 -2px 0 0 #ffffff;
 }
 
 .empty-row {
