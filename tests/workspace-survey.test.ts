@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { DEFAULT_SURVEY_LIMITS, surveyRoot } from "../src/main/workspace-survey.ts";
+import { DEFAULT_SURVEY_LIMITS, surveyRoot } from "../src/main/diagnostics/workspace.ts";
 
-// Shaped like the real TESTZ workspace: hosts under Deployment/Resource/Host,
+// Representative deployment workspace: hosts under Deployment/Resource/Host,
 // one Windows build, and real-time targets that are not Windows executables.
 function workspace(): string {
   const root = mkdtempSync(path.join(os.tmpdir(), "eli-survey-"));
@@ -51,6 +51,29 @@ test("the scan count is recorded so truncation can be judged", async () => {
     const result = await surveyRoot(root);
     assert.ok(result.scanned > 0, "expected a non-zero scan count");
     assert.equal(result.truncated, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Phoebus said "C:\\Workspaces\\css-gui\\pm.bob (cannot find the file)" and the
+// report could not say where pm.bob actually was, because it only listed
+// executables. A panel is not an executable but it is the same question.
+test("the survey finds Phoebus panels, not only executables", async () => {
+  const root = workspace();
+  try {
+    const panels = path.join(root, "TESTZone", "panel");
+    mkdirSync(panels, { recursive: true });
+    writeFileSync(path.join(panels, "pm.bob"), "<display/>");
+    writeFileSync(path.join(panels, "trend.plt"), "<plot/>");
+    writeFileSync(path.join(panels, "layout.memento"), "<memento/>");
+    const result = await surveyRoot(root);
+    const found = result.panels.map((p) => p.split(path.sep).join("/"));
+    assert.ok(found.includes("TESTZone/panel/pm.bob"), JSON.stringify(found));
+    assert.ok(found.includes("TESTZone/panel/trend.plt"), JSON.stringify(found));
+    assert.ok(found.includes("TESTZone/panel/layout.memento"), JSON.stringify(found));
+    // A panel is not an executable and must not be counted as one.
+    assert.ok(!result.executables.some((p) => p.endsWith(".bob")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

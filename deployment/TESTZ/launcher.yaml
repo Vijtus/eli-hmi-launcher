@@ -1,0 +1,142 @@
+# TESTZ local trust/bootstrap configuration.
+siteName: TESTZ
+
+local:
+  workspaceRoot: C:\Workspaces\TESTZ_dev_TESTZ-OPR04
+  cssGuiRoot: C:\Workspaces\css-gui
+  zoneSymbol: TESTZ
+  phoebus:
+    installRoot: C:\CSS Phoebus\product-5.0.2
+    settingsFile: C:\Workspaces\css-gui\settings\TESTZ.ini
+    serverPort: 4918
+    startupTimeoutMs: 60000
+    resourceReadyDelayMs: 2000
+
+security:
+  allowedCommandRoots:
+    - ${local.workspaceRoot}
+    - ${local.cssGuiRoot}
+    - ${local.phoebus.installRoot}
+  allowBareCommands: false
+
+entries:
+  - id: phoebus-power-meters
+    name: Power Meters
+    technology: [Diagnostics]
+    section: [TESTZ]
+    platform: Phoebus
+    rmc: --
+    note: pm.bob
+    target: { kind: phoebus, resource: panel/TESTZ/pm.bob, app: display_runtime }
+
+  - id: phoebus-centroids
+    name: Centroids
+    technology: [Cameras]
+    section: [TESTZ]
+    platform: Phoebus
+    rmc: --
+    note: centroids.bob
+    target: { kind: phoebus, resource: panel/TESTZ/centroids.bob, app: display_runtime }
+
+  - id: phoebus-bare
+    name: Phoebus (no panel)
+    technology: []
+    section: [TESTZ]
+    platform: Phoebus
+    rmc: --
+    note: Starts Phoebus with TESTZ settings only
+    target: { kind: phoebus }
+
+  - id: web-eli-beams
+    name: ELI Beamlines
+    technology: [Web]
+    section: [TESTZ]
+    platform: Web
+    rmc: --
+    note: Public site
+    target: { kind: web, url: 'https://www.eli-beams.eu/' }
+
+  - id: web-phoebus-docs
+    name: Phoebus Documentation
+    technology: [Web]
+    section: [TESTZ]
+    platform: Web
+    rmc: --
+    note: Display Builder and Data Browser reference
+    target: { kind: web, url: 'https://control-system-studio.readthedocs.io/' }
+
+  - id: cm-rmc00-001
+    name: Camera Manager
+    technology: [Cameras]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: RMC00-001
+    note: --
+    target: { kind: labview-dev, iocName: Camera Manager, hostName: RMC00-001, iocType: Camera Manager, exeName: CM.exe }
+
+  - id: cm-rmc00-002
+    name: Camera Manager
+    technology: [Cameras]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: RMC00-002
+    note: --
+    target: { kind: labview-dev, iocName: Camera Manager, hostName: RMC00-002, iocType: Camera Manager, exeName: CM.exe }
+
+  - id: cm-rmc00-003
+    name: Camera Manager
+    technology: [Cameras]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: RMC00-003
+    note: --
+    target: { kind: labview-dev, iocName: Camera Manager, hostName: RMC00-003, iocType: Camera Manager, exeName: CM.exe }
+
+  - id: cm-rmc00-004
+    name: Camera Manager
+    technology: [Cameras]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: RMC00-004
+    note: --
+    target: { kind: labview-dev, iocName: Camera Manager, hostName: RMC00-004, iocType: Camera Manager, exeName: CM.exe }
+
+  - id: cm-testz-deploy
+    name: Camera Manager
+    technology: [Cameras]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: TESTZ-Deploy
+    note: --
+    target: { kind: labview-dev, iocName: Camera Manager, hostName: TESTZ-Deploy, iocType: Camera Manager, exeName: CM.exe }
+
+  - id: fast-pointing-rmc00-001
+    name: Fast Pointing IOC
+    technology: [Pointing]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: RMC00-001
+    note: --
+    target: { kind: labview-dev, iocName: Fast Pointing IOC, hostName: RMC00-001, iocType: Fast Pointing IOC, exeName: Fast Pointing.exe }
+
+  - id: pointing-rmc00-002
+    name: Pointing
+    technology: [Pointing]
+    section: [TESTZ]
+    platform: LabVIEW
+    rmc: RMC00-002
+    note: --
+    target: { kind: labview-dev, iocName: Pointing, hostName: RMC00-002, iocType: Pointing, exeName: Pointing4x4.exe }
+
+quickActions:
+  - id: qa-phoebus
+    label: Phoebus
+    target: { kind: phoebus }
+
+moreActions:
+  - id: css-gui-folder
+    label: CSS GUI Folder
+    target: { kind: folder, path: '${local.cssGuiRoot}' }
+  - id: web-eli-intranet
+    label: ELI Beamlines site
+    target: { kind: web, url: 'https://www.eli-beams.eu/' }

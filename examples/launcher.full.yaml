@@ -1,0 +1,103 @@
+# Complete configuration example. Replace site paths before deployment.
+siteName: Example Site
+
+security:
+  allowedCommandRoots:
+    - ${local.workspaceRoot}
+    - ${local.phoebus.installRoot}
+    - /opt/eli/launchers
+  allowBareCommands: false
+
+local:
+  workspaceRoot: /srv/eli/workspace
+  cssGuiRoot: /srv/eli/css-gui
+  zoneSymbol: EXAMPLE
+  phoebus:
+    installRoot: /opt/phoebus
+    executable: /opt/phoebus/phoebus.sh
+    serverPort: 4918
+    settingsFile: /srv/eli/css-gui/settings/example.ini
+  monitoring:
+    reconcileIntervalMs: 5000
+
+access:
+  platforms:
+    LabVIEW:
+      maxInstances: 1
+      writeModeExclusive: true
+      launchMode: unknown
+      onAlreadyRunning: block
+      onUnknownState: block
+
+entries:
+  - id: native-tool
+    name: Native tool
+    technology: [Diagnostics]
+    section: [L4]
+    platform: Native
+    rmc: RMC001
+    note: Wrapper owned by the deployment
+    target:
+      kind: process
+      command: /opt/eli/launchers/native-tool
+      args: [--mode, operator]
+      windows:
+        command: 'C:\ELI\launchers\native-tool.cmd'
+        args: [--mode, operator]
+
+  - id: camera-manager
+    name: Camera Manager
+    technology: [Cameras]
+    section: [L4b, L4c]
+    platform: LabVIEW
+    rmc: RMC403
+    note: Developer HMI
+    target:
+      kind: labview-dev
+      iocName: Camera Manager
+      hostName: RMC403
+      iocType: Camera Manager
+      exeName: Camera Manager.exe
+
+  - id: epics-overview
+    name: EPICS Overview
+    technology: [Diagnostics]
+    section: [L4]
+    platform: LabVIEW
+    rmc: RMC404
+    note: EPICS GUI
+    target:
+      kind: labview-epics
+      guiName: EPICS Overview
+      guiType: Operator Panels
+      exeName: EPICS Overview.exe
+
+  - id: vacuum-overview
+    name: Vacuum Overview
+    technology: [Vacuum]
+    section: [L4]
+    platform: Phoebus
+    rmc: --
+    note: Display Builder panel
+    target:
+      kind: phoebus
+      resource: panels/vacuum-overview.bob
+      app: display_runtime
+
+  - id: operator-docs
+    name: Operator Documentation
+    technology: [Web]
+    section: [L4]
+    platform: Web
+    rmc: --
+    note: HTTPS only
+    target:
+      kind: web
+      url: https://example.invalid/operator-docs
+
+moreActions:
+  - id: css-folder
+    label: CSS GUI folder
+    target:
+      kind: folder
+      path: ${local.cssGuiRoot}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { inspectProcess, inspectProcesses } from "../src/main/process-inspector.ts";
+import { inspectProcess, inspectProcesses } from "../src/main/runtime/process.ts";
 
 // A non-Linux platform argument routes inspection through the `ps` path used on
 // macOS/BSD. `ps` is exercised here against this test's own live process, so

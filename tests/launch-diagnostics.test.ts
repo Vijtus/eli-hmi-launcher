@@ -3,18 +3,18 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
+import { parseConfig } from "../src/main/config/load.ts";
 import {
   attachLaunchDiagnostics,
   LaunchDiagnosticError,
-} from "../src/main/launch-diagnostics.ts";
-import { initLogger, logLaunch } from "../src/main/logger.ts";
-import { launchMaterializedProcess } from "../src/main/native-launcher.ts";
+} from "../src/main/launch/errors.ts";
+import { initLogger, logLaunch } from "../src/main/diagnostics/log.ts";
+import { launchMaterializedProcess } from "../src/main/launch/native.ts";
 import {
   PhoebusServerManager,
   PhoebusServerUnreachableError,
-} from "../src/main/phoebus-server.ts";
-import { materializePhoebusTarget } from "../src/main/phoebus-targets.ts";
+} from "../src/main/launch/phoebus-server.ts";
+import { materializePhoebusTarget } from "../src/main/launch/phoebus.ts";
 import type { PhoebusLaunchTarget, ProcessLaunchTarget } from "../src/shared/types.ts";
 
 const BASE = { appRoot: "/tmp/app", configDir: "/tmp/cfg" };
@@ -48,7 +48,7 @@ entries:
       assert.match(error.message, /Configured command does not exist/);
       assert.match(error.message, new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       assert.equal(error.resolvedCommand, missing);
-      assert.deepEqual(error.resolvedArgs, ["-server", "4918"]);
+      assert.deepEqual(error.resolvedArgs, ["-server", "4918", "-nosplash"]);
       assert.doesNotMatch(error.message, /unreachable at 127\.0\.0\.1/);
       return true;
     },

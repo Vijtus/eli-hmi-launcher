@@ -75,8 +75,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           UNSIGNED_NOTE: >-
-            These installers are **unsigned**. See docs/INSTALL.md for the one-time
-            Windows SmartScreen and macOS Gatekeeper steps.
+            These installers are **unsigned**. See docs/troubleshooting.md for Windows SmartScreen and macOS Gatekeeper notes.
         run: |
           set -euo pipefail
           ls -lh artifacts

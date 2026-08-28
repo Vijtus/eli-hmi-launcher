@@ -3,14 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadConfigFromFile } from "../src/main/config.ts";
+import { loadConfigFromFile } from "../src/main/config/load.ts";
 import {
   DEFAULT_SUBPATH,
   ENV,
   readDynamicConfigEnv,
   resolveFromCheckout,
-} from "../src/main/dynamic-config.ts";
-import type { ConfigRepoResult } from "../src/main/config-repo.ts";
+} from "../src/main/catalog/load.ts";
+import type { ConfigRepoResult } from "../src/main/catalog/repo.ts";
 
 // Verbatim from eli-eric/eli-hmi-config@ad98e4b.
 const REAL_HOST = `zone: TESTZ
@@ -51,7 +51,7 @@ function tree(files: Record<string, string> = {}, rootConfig?: string): Tree {
     writeFileSync(path.join(repoDir, DEFAULT_SUBPATH, name), text);
   }
   const configPath = path.join(configDir, "launcher.yaml");
-  writeFileSync(configPath, rootConfig ?? "appName: L4 Launcher\nentries: []\n");
+  writeFileSync(configPath, rootConfig ?? "siteName: Local test\nentries: []\n");
   return { root, repoDir, appRoot, configDir, configPath };
 }
 
@@ -167,7 +167,7 @@ test("the OS hostname is used when no override is set", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Merge precedence (FR5)
+// Merge precedence
 // ---------------------------------------------------------------------------
 
 test("zone `local:` is the base and the host file overrides it key by key", () => {
@@ -207,11 +207,11 @@ test("a host `local:` block wins over the kebab-case aliases", () => {
 // Launcher-level settings owned by the config repo
 // ---------------------------------------------------------------------------
 
-test("a zone can own appName and the action buttons", () => {
+test("a zone can own siteName and the action buttons", () => {
   const t = tree({
     "zone/TESTZ.yaml":
       "launcher:\n" +
-      "  appName: L4 Launcher — TESTZ\n" +
+      "  siteName: TESTZ\n" +
       "  quickActions:\n" +
       "    - id: data-browser\n      label: Data Browser\n      target: { kind: web, url: 'https://example.local/db' }\n" +
       "  moreActions:\n" +
@@ -224,7 +224,7 @@ test("a zone can own appName and the action buttons", () => {
       configDir: t.configDir,
       overlay: resolve(t).overlay,
     });
-    assert.equal(parsed.appName, "L4 Launcher — TESTZ");
+    assert.equal(parsed.siteName, "TESTZ");
     assert.deepEqual(parsed.quickActions.map((a) => a.id), ["data-browser"]);
     assert.deepEqual(parsed.moreActions.map((a) => a.id), ["sequencer"]);
     assert.deepEqual(parsed.targetsById.get("data-browser"), {
@@ -238,8 +238,8 @@ test("a zone can own appName and the action buttons", () => {
 
 test("a host overrides the zone's launcher settings", () => {
   const t = tree({
-    "zone/TESTZ.yaml": "launcher:\n  appName: Zone name\nlabview-dev:\n",
-    "host/TESTZ-Deploy.yaml": `${REAL_HOST}launcher:\n  appName: Host name\n`,
+    "zone/TESTZ.yaml": "launcher:\n  siteName: Zone name\nlabview-dev:\n",
+    "host/TESTZ-Deploy.yaml": `${REAL_HOST}launcher:\n  siteName: Host name\n`,
   });
   try {
     const parsed = loadConfigFromFile(t.configPath, {
@@ -247,7 +247,7 @@ test("a host overrides the zone's launcher settings", () => {
       configDir: t.configDir,
       overlay: resolve(t).overlay,
     });
-    assert.equal(parsed.appName, "Host name");
+    assert.equal(parsed.siteName, "Host name");
   } finally {
     rmSync(t.root, { recursive: true, force: true });
   }
@@ -260,7 +260,7 @@ test("action lists REPLACE the root file's rather than appending to it", () => {
         "launcher:\n  quickActions:\n    - id: from-zone\n      label: From zone\n" +
         "      target: { kind: web, url: 'https://example.local/z' }\nlabview-dev:\n",
     },
-    "appName: L4\nentries: []\nquickActions:\n  - id: from-file\n    label: From file\n" +
+    "siteName: L4\nentries: []\nquickActions:\n  - id: from-file\n    label: From file\n" +
       "    target: { kind: web, url: 'https://example.local/f' }\n",
   );
   try {
@@ -278,7 +278,7 @@ test("action lists REPLACE the root file's rather than appending to it", () => {
 test("when the repo sets no launcher block the root file still decides", () => {
   const t = tree(
     {},
-    "appName: Root name\nentries: []\nquickActions:\n  - id: from-file\n    label: From file\n" +
+    "siteName: Root name\nentries: []\nquickActions:\n  - id: from-file\n    label: From file\n" +
       "    target: { kind: web, url: 'https://example.local/f' }\n",
   );
   try {
@@ -287,7 +287,7 @@ test("when the repo sets no launcher block the root file still decides", () => {
       configDir: t.configDir,
       overlay: resolve(t).overlay,
     });
-    assert.equal(parsed.appName, "Root name");
+    assert.equal(parsed.siteName, "Root name");
     assert.deepEqual(parsed.quickActions.map((a) => a.id), ["from-file"]);
   } finally {
     rmSync(t.root, { recursive: true, force: true });
@@ -295,7 +295,7 @@ test("when the repo sets no launcher block the root file still decides", () => {
 });
 
 test("a `launcher:` block is not mistaken for an HMI group", () => {
-  const t = tree({ "zone/TESTZ.yaml": "launcher:\n  appName: X\nlabview-dev:\n" });
+  const t = tree({ "zone/TESTZ.yaml": "launcher:\n  siteName: X\nlabview-dev:\n" });
   try {
     const result = resolve(t);
     assert.deepEqual(result.warnings, []);
@@ -306,7 +306,7 @@ test("a `launcher:` block is not mistaken for an HMI group", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Feeding the launcher's existing config model (FR6)
+// Feeding the launcher's normalized config model
 // ---------------------------------------------------------------------------
 
 test("zone entries reach the launcher's parsed config as ordinary rows", () => {
@@ -350,10 +350,6 @@ test("host machine values reach context.local, including the derived Phoebus exe
     // Derived from installRoot because no explicit executable was configured.
     assert.match(local.phoebus.executable ?? "", /phoebus\.(bat|sh)$/);
     assert.equal(local.hosts["hmi-server"], "testz-deploy20:8082");
-    // `hmi-server` becomes a usable lifecycle base URL, with the plain-HTTP
-    // opt-in recorded explicitly rather than silently.
-    assert.equal(local.hmiApi.baseUrl, "http://testz-deploy20:8082/api/lifecycle/v1");
-    assert.equal(local.hmiApi.allowInsecureTransport, true);
   } finally {
     rmSync(t.root, { recursive: true, force: true });
   }
@@ -376,7 +372,7 @@ test("an explicit executable in the config repo wins over the derived one", () =
 });
 
 test("the git overlay overrides the local file's `local:` block", () => {
-  const t = tree({}, "appName: L4\nlocal:\n  zoneSymbol: STALE\n  cssGuiRoot: C:\\old\nentries: []\n");
+  const t = tree({}, "siteName: L4\nlocal:\n  zoneSymbol: STALE\n  cssGuiRoot: C:\\old\nentries: []\n");
   try {
     const parsed = loadConfigFromFile(t.configPath, {
       appRoot: t.appRoot,
@@ -396,7 +392,7 @@ test("zone entries override an inline entry with the same id", () => {
       "zone/TESTZ.yaml":
         "labview-dev:\n  - id: shared\n    ioc-name: Zone winner\n    host: H\n    ioc-type: T\n    exe: E.exe\n",
     },
-    "appName: L4\nentries:\n  - id: shared\n    name: Inline loser\n    target: { kind: web, url: 'https://example.local/x' }\n",
+    "siteName: L4\nentries:\n  - id: shared\n    name: Inline loser\n    target: { kind: web, url: 'https://example.local/x' }\n",
   );
   try {
     const parsed = loadConfigFromFile(t.configPath, {
@@ -417,7 +413,7 @@ test("zone entries override an inline entry with the same id", () => {
 test("the config repo cannot alter the security policy", () => {
   const t = tree(
     { "host/TESTZ-Deploy.yaml": `${REAL_HOST}local:\n  workspaceRoot: D:\\ws\n` },
-    "appName: L4\nsecurity:\n  allowedCommandRoots:\n    - /opt/eli/approved\n  allowBareCommands: false\nentries: []\n",
+    "siteName: L4\nsecurity:\n  allowedCommandRoots:\n    - /opt/eli/approved\n  allowBareCommands: false\nentries: []\n",
   );
   try {
     const parsed = loadConfigFromFile(t.configPath, {
@@ -474,7 +470,7 @@ test("a fresh repo leaves the launcher unstale", () => {
 });
 
 test("with no overlay the launcher behaves exactly as before the feature", () => {
-  const t = tree({}, "appName: L4\nentries:\n  - id: only\n    name: Only\n    target: { kind: web, url: 'https://example.local/x' }\n");
+  const t = tree({}, "siteName: L4\nentries:\n  - id: only\n    name: Only\n    target: { kind: web, url: 'https://example.local/x' }\n");
   try {
     const parsed = loadConfigFromFile(t.configPath, { appRoot: t.appRoot, configDir: t.configDir });
     assert.deepEqual(parsed.rows.map((r) => r.id), ["only"]);

@@ -5,7 +5,7 @@ import {
   buildConfigCandidates,
   resolveAppRoot,
   type AppLocation,
-} from "../src/main/app-paths.ts";
+} from "../src/main/config/paths.ts";
 
 // Mirrors a dev checkout: electron-vite runs the app straight from the project.
 function devLocation(overrides: Partial<AppLocation> = {}): AppLocation {

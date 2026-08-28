@@ -1,6 +1,8 @@
 // Shared types used by main, preload, and renderer.
 // Keep this file dependency-free so every layer can import it.
 
+export const PRODUCT_NAME = "ELI HMI Launcher";
+
 export type ProcessTargetOptions = {
   command?: string;
   args?: string[];
@@ -84,8 +86,8 @@ export type CatalogSourceStatus = {
   loadedAt?: string;
 };
 
-// Provenance of the git-backed configuration, surfaced so an operator can tell a
-// fresh start from one running on a cached commit (NFR3/NFR8).
+// Provenance is surfaced so an operator can distinguish fresh configuration
+// from a cached/offline checkout.
 export type ConfigRepoProvenance = {
   url: string;
   ref: string;
@@ -134,19 +136,6 @@ export type LocalPhoebusConfig = {
   resourceReadyDelayMs?: number;
 };
 
-export type LocalHmiApiConfig = {
-  baseUrl?: string;
-  stationId?: string;
-  authTokenEnv?: string;
-  requestTimeoutMs?: number;
-  heartbeatIntervalMs?: number;
-  // Opt-in for a lifecycle API reached over plain HTTP on a trusted site LAN.
-  // Set automatically when the config repo's `hmi-server` key gives a bare
-  // `host:port` with no scheme. It never permits sending a token in cleartext —
-  // HTTP combined with `authTokenEnv` is refused outright.
-  allowInsecureTransport?: boolean;
-};
-
 export type LocalMonitoringConfig = {
   reconcileIntervalMs?: number;
 };
@@ -161,12 +150,12 @@ export type LocalMachineConfig = {
   zoneSymbol?: string;
   phoebus: LocalPhoebusConfig;
   hosts: Record<string, string>;
-  hmiApi: LocalHmiApiConfig;
   monitoring: LocalMonitoringConfig;
 };
 
 export type LauncherConfig = {
-  appName: string;
+  productName: string;
+  siteName?: string;
   rows: LauncherRow[];
   quickActions: LauncherAction[];
   moreActions: LauncherAction[];
@@ -215,19 +204,6 @@ export type RuntimeSnapshot = {
   generatedAt: string;
   reconcileIntervalMs: number;
   items: RuntimeItemState[];
-  hmiApi?: HmiApiHealth;
-};
-
-export type HmiApiHealthStatus =
-  | "disabled"
-  | "connected"
-  | "unavailable"
-  | "misconfigured";
-
-export type HmiApiHealth = {
-  status: HmiApiHealthStatus;
-  reason?: string;
-  lastSuccessAt?: string;
 };
 
 export type LaunchAccessMode = "read" | "write" | "unknown";

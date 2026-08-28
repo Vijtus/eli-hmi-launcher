@@ -11,19 +11,19 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { parseConfig, type MaterializedProcess } from "../src/main/config";
+import { parseConfig, type MaterializedProcess } from "../src/main/config/load";
 import {
   materializeLabviewDeveloperTarget,
   materializeLabviewEpicsTarget,
-} from "../src/main/labview-targets";
-import { launchMaterializedProcess, type NativeLaunchResult } from "../src/main/native-launcher";
-import { detachedSpawnOptions } from "../src/main/process-launcher";
-import { RuntimeRegistry } from "../src/main/runtime-registry";
+} from "../src/main/launch/labview";
+import { launchMaterializedProcess, type NativeLaunchResult } from "../src/main/launch/native";
+import { detachedSpawnOptions } from "../src/main/launch/process";
+import { RuntimeRegistry } from "../src/main/runtime/registry";
 import {
   EntryLaunchGate,
   LaunchPolicyError,
   runWithLaunchPolicy,
-} from "../src/main/launch-policy-enforcement";
+} from "../src/main/launch/access";
 import type {
   LabviewDeveloperLaunchTarget,
   LabviewEpicsLaunchTarget,

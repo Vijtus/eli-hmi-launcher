@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deepMerge, mergeMappings } from "../src/main/config-merge.ts";
+import { deepMerge, mergeMappings } from "../src/main/config/merge.ts";
 
 test("mappings merge key by key and recursively", () => {
   const merged = deepMerge(

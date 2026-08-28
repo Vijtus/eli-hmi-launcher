@@ -1,87 +1,65 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:; object-src 'none'; base-uri 'none'"
-    />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ws:; object-src 'none'; base-uri 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>L4 Launcher</title>
+    <title>Launcher</title>
   </head>
   <body>
-    <header class="app-header container-fluid">
-      <h1 id="app-title">L4 LAUNCHER</h1>
+    <header class="app-header">
+      <div class="title-line">
+        <h1 id="app-title">Launcher</h1>
+        <span id="site-name" class="site-name" hidden></span>
+      </div>
       <div class="toolbar">
         <section class="filters" aria-label="GUI filters">
-          <label>
+          <label class="search-field">
             <span class="visually-hidden">Search</span>
-            <input
-              id="search-input"
-              type="search"
-              placeholder="Search in Name &amp; Note..."
-              autocomplete="off"
-            />
+            <input id="search-input" type="search" placeholder="Search Name &amp; Note" autocomplete="off" />
           </label>
-          <div class="filter-field">
-            <span id="technology-label" class="filter-label">Technology</span>
-            <div id="technology-filter"></div>
-          </div>
-          <div class="filter-field">
-            <span id="section-label" class="filter-label">Section</span>
-            <div id="section-filter"></div>
-          </div>
+          <label class="filter-field">
+            <span>Technology</span>
+            <select id="technology-filter"><option value="">All</option></select>
+          </label>
+          <label class="filter-field">
+            <span>Section</span>
+            <select id="section-filter"><option value="">All</option></select>
+          </label>
         </section>
         <nav id="quick-actions" class="quick-actions" aria-label="Launcher actions"></nav>
       </div>
     </header>
 
-    <main class="container-fluid">
+    <main>
       <p id="config-location" class="config-location" role="status" hidden>
         <span id="config-location-text"></span>
-        <button id="config-location-open" type="button" class="config-location-open">Open folder</button>
+        <button id="config-location-open" type="button">Open folder</button>
       </p>
       <p id="field-report-banner" class="field-report-banner" role="status" hidden></p>
       <p id="catalog-staleness" class="catalog-staleness" role="status" hidden></p>
-
-      <article id="status-banner" class="status-banner" role="alert" hidden>
+      <div id="status-banner" class="status-banner" role="alert" hidden>
         <span id="status-text"></span>
-        <button id="status-dismiss" class="dismiss" type="button" aria-label="Dismiss message">&#10005;</button>
-      </article>
+        <button id="status-dismiss" class="dismiss" type="button" aria-label="Dismiss message">×</button>
+      </div>
 
-      <section
-        class="table-panel"
-        aria-label="Configured GUIs"
-        data-runtime-state-column="active"
-      >
+      <section class="table-panel" aria-label="Configured GUIs" data-runtime-state-column="active">
         <table>
           <colgroup>
-            <col class="column-name" />
-            <col class="column-technology" />
-            <col class="column-section" />
-            <col class="column-platform" />
-            <col class="column-rmc" />
-            <col class="column-runtime-state" />
-            <col class="column-note" />
+            <col class="column-name" /><col class="column-technology" /><col class="column-section" />
+            <col class="column-platform" /><col class="column-rmc" /><col class="column-runtime-state" /><col class="column-note" />
           </colgroup>
           <thead>
             <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Technology</th>
-              <th scope="col">Section</th>
-              <th scope="col">Platform</th>
-              <th scope="col">RMC</th>
-              <th scope="col">State</th>
-              <th scope="col">Note</th>
+              <th scope="col">Name</th><th scope="col">Technology</th><th scope="col">Section</th>
+              <th scope="col">Platform</th><th scope="col">RMC</th><th scope="col">State</th><th scope="col">Note</th>
             </tr>
           </thead>
           <tbody id="launcher-rows"></tbody>
         </table>
       </section>
-
       <p id="row-count" class="row-count visually-hidden" aria-live="polite"></p>
     </main>
-
     <script type="module" src="./app.ts"></script>
   </body>
 </html>

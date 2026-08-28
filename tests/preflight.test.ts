@@ -3,8 +3,8 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parseConfig } from "../src/main/config.ts";
-import { preflightConfig } from "../src/main/preflight.ts";
+import { parseConfig } from "../src/main/config/load.ts";
+import { phoebusResourcePath, preflightConfig } from "../src/main/diagnostics/preflight.ts";
 
 function workspace(): string {
   return mkdtempSync(path.join(os.tmpdir(), "eli-preflight-"));
@@ -42,7 +42,7 @@ test("a command that exists and is allowed reports ready", async () => {
   }
 });
 
-// The whole point on a real machine: say which programs simply are not here.
+// Report missing programs explicitly rather than failing later at launch time.
 test("a command that is not installed reports missing, not an error", async () => {
   const root = workspace();
   try {
@@ -150,6 +150,72 @@ test("preflight never throws, it reports", async () => {
     assert.equal(findings.size, 2);
     assert.equal(findings.get("a")?.status, "missing");
     assert.equal(findings.get("b")?.status, "missing");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// filesystemResourceUrl deliberately maps \\host\share\x.bob to
+// file://host/share/x.bob. Reading only url.pathname threw the host away, so a
+// panel on a share was reported missing when it was there all along — and that
+// fabricated "missing" also re-triggered the whole workspace walk.
+test("a UNC panel URI is turned back into a UNC path", () => {
+  assert.equal(
+    phoebusResourcePath("file://eli-fs/css-gui/pm.bob?app=display_runtime"),
+    "\\\\eli-fs\\css-gui\\pm.bob",
+  );
+});
+
+test("a drive-letter panel URI loses the leading slash", () => {
+  assert.equal(
+    phoebusResourcePath("file:///C:/Workspaces/css-gui/pm.bob?app=display_runtime"),
+    "C:/Workspaces/css-gui/pm.bob",
+  );
+});
+
+test("a percent-encoded space is decoded back to a real path", () => {
+  assert.equal(
+    phoebusResourcePath("file:///C:/CSS%20GUIs/pm.bob"),
+    "C:/CSS GUIs/pm.bob",
+  );
+});
+
+// An http(s) panel is somebody else's server and must not be stat'd.
+test("a remote panel is not treated as a local file", () => {
+  assert.equal(phoebusResourcePath("https://panels.invalid/main.bob"), undefined);
+});
+
+test("a bare path is returned as-is so it can be checked", () => {
+  assert.equal(phoebusResourcePath("C:\\Workspaces\\css-gui\\pm.bob"), "C:\\Workspaces\\css-gui\\pm.bob");
+  assert.equal(phoebusResourcePath("/srv/css/pm.bob"), "/srv/css/pm.bob");
+});
+
+// resolvePhoebusResource returns a bare path when the entry names no app and
+// carries no macros — the plainest entry anyone writes. Requiring a file: prefix
+// meant those were never checked and still reported ready with no panel.
+test("a panel named without an app is still checked", async () => {
+  const root = workspace();
+  try {
+    executable(root, "phoebus.sh");
+    const parsed = parseConfig(
+      [
+        "local:",
+        "  cssGuiRoot: " + JSON.stringify(root),
+        "  phoebus: { installRoot: " + JSON.stringify(root) + ", serverPort: 4918 }",
+        "security:",
+        "  allowedCommandRoots: [" + JSON.stringify(root) + "]",
+        "  allowBareCommands: false",
+        "entries:",
+        "  - id: plain",
+        "    name: Plain panel",
+        "    target: { kind: phoebus, resource: 'absent.bob' }",
+      ].join("\n"),
+      { appRoot: root, configDir: root },
+    );
+    const findings = await preflightConfig(parsed);
+    const plain = findings.find((f) => f.id === "plain");
+    assert.equal(plain?.status, "missing", JSON.stringify(plain));
+    assert.match(plain?.detail ?? "", /panel does not exist/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

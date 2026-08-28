@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadConfigFromFile } from "../src/main/config.ts";
+import { loadConfigFromFile } from "../src/main/config/load.ts";
 
 function tempTree(): { root: string; app: string; config: string; shared: string; cache: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "eli-catalog-test-"));
@@ -22,7 +22,7 @@ function catalog(entries: string): string {
 
 function rootConfig(sourcePath: string, inlineEntries = ""): string {
   return `
-appName: Test
+siteName: Test
 catalog:
   sources:
     - id: shared

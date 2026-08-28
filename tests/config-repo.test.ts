@@ -10,7 +10,7 @@ import {
   worktreeDir,
   type ConfigRepoDeps,
   type GitLike,
-} from "../src/main/config-repo.ts";
+} from "../src/main/catalog/repo.ts";
 
 const TOKEN = "ghp_SUPERSECRETTOKEN123456789";
 

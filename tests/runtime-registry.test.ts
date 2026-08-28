@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inspectProcess, type ProcessObservation } from "../src/main/process-inspector.ts";
+import { inspectProcess, type ProcessObservation } from "../src/main/runtime/process.ts";
 import {
   RuntimeRegistry,
   type RegistryScheduler,
-} from "../src/main/runtime-registry.ts";
+} from "../src/main/runtime/registry.ts";
 
 function receipt(pid = 321, spawnedAt = 1_000) {
   return { pid, spawnedAt };

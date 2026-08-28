@@ -1,640 +1,96 @@
-# ELI HMI Launcher (L4) — MVP
+# ELI HMI Launcher
 
-Minimal, config-driven launcher for L4 control-system GUIs. It is an Electron
-desktop app with a vanilla-TypeScript renderer styled with Pico CSS: a flat,
-searchable, filterable table that reflects an external YAML configuration.
-Clicking a row launches a GUI. Top-right quick actions cover Data Browser and
-Alarm System; a **More…**
-menu covers Sequencer, Safety Diagnostics, Network Shared Folder, and future
-services. The interface uses a fixed, high-contrast black-and-white palette and
-does not follow the operating-system color scheme.
+ELI HMI Launcher is a small Electron desktop application for finding and launching configured control-system HMIs. It presents a searchable table, applies launch policy in the Electron main process, starts native/LabVIEW/Phoebus targets, hands web/folder targets to the operating system, and reports observed runtime state.
 
-The renderer only displays/filters and sends a launch **id** over IPC. The main
-(Node) process owns config loading, validation, security enforcement, and
-launching, including instance/write-mode access checks. The renderer never
-receives or sends raw commands or resolved access policies.
+The product name is fixed. Deployment identity is configuration data (`siteName`) and deployment-specific material lives outside the generic application tree.
 
-Version: `0.4.0`. Requires Node 20.19+ for development; Electron 40 requires a currently supported Node toolchain. Runs on Windows, macOS and Linux, both from source and as an installed application.
+## Deploying at TESTZ
 
----
+Installers and portable builds for all three platforms are attached to the [latest release](../../releases/latest). On the TESTZ control-room workstation:
 
-## Install
-
-Prebuilt, **unsigned** installers for all three platforms are published on the
-[Releases page](https://github.com/eli-eric/eli-hmi-launcher/releases):
-
-| OS | Artifact |
-|---|---|
-| Windows | `-setup.exe` (per-user, no admin) or `-portable.exe` |
-| macOS | `.dmg` (Apple Silicon and Intel) |
-| Linux | `.AppImage`, `.deb`, `.rpm`, or `.tar.gz` |
-
-Because they are unsigned, Windows shows a SmartScreen prompt and macOS shows a
-Gatekeeper prompt the first time. **[docs/INSTALL.md](docs/INSTALL.md)** has the
-one-time steps for each, plus where to put your own `launcher.yaml`.
-
-## Run from source
-
-Needs Node 20.19+ and a desktop session. Identical on all three platforms:
-
-```sh
-./run.sh          # Linux / macOS
 ```
-```bat
-run.cmd           :: Windows
+1  run ELI.HMI.Launcher-0.4.0-x64-setup.exe, or use the -x64-portable.exe build
+2  copy deployment/TESTZ/launcher.yaml  to  %APPDATA%\eli-hmi-launcher\launcher.yaml
+3  copy deployment/TESTZ/panels/TESTZ   to  C:\Workspaces\css-gui\panel\
 ```
 
-Both install dependencies on first run, validate the config, and start the app;
-`npm run app` is the same thing. To drive the steps yourself:
+Step 2 uses `%APPDATA%` rather than the install directory because an upgrade replaces the install directory; the launcher's top strip reads `CONFIG (built in, not editable)` when that has happened. The portable build reads `launcher.yaml` from beside its executable instead.
+
+Step 3 is required until `panel/TESTZ/` is committed to the css-gui repository. The two panels exist in no other repository — see [deployment/TESTZ/README.md](deployment/TESTZ/README.md).
+
+The builds are unsigned: Windows shows SmartScreen (More info → Run anyway) and macOS requires right-click → Open on first launch.
+
+Last verified on `TESTZ-OPR04` on 2026-08-27, 15 of 15 entries launching; the reports are under [deployment/TESTZ/field-reports/](deployment/TESTZ/field-reports).
+
+## Platforms
+
+The application is built and tested on Windows, macOS, and Linux. Packaging targets include Windows NSIS/portable/zip, macOS dmg/zip, and Linux AppImage/deb/rpm/tar.gz. Platform-specific process behavior is covered by the cross-platform CI matrix.
+
+## Development
+
+Requires Node.js 20.19 or newer.
 
 ```sh
 npm ci
-npm start          # electron-vite dev
+npm start
 ```
 
-The default `config/launcher.yaml` is wired to **mock launchers** so everything
-is clickable immediately without real LabVIEW/Phoebus paths. Mock process
-launches append to `<OS-temp>/eli-hmi-launcher-mock.log`.
+Common checks:
 
 ```sh
-# Linux/macOS
-tail -f "${TMPDIR:-/tmp}/eli-hmi-launcher-mock.log"
-# Windows (PowerShell)
-Get-Content "$env:TEMP\eli-hmi-launcher-mock.log" -Wait
+npm test
+npm run typecheck
+npm run verify
+npm run validate-config -- config/launcher.yaml
 ```
 
-## Documentation
+Build the Electron bundles with `npm run build`. Build an unpacked application with `npm run pack`, or installers for the current platform with `npm run dist`. Platform-specific installer scripts are `dist:win`, `dist:mac`, and `dist:linux`.
 
-| | |
-|---|---|
-| [docs/INSTALL.md](docs/INSTALL.md) | Install and run on Windows, macOS, Linux |
-| [docs/FILL-IN-QUICKSTART.md](docs/FILL-IN-QUICKSTART.md) | One page: write your own catalog |
-| [docs/CONFIG_HOWTO.md](docs/CONFIG_HOWTO.md) | Full guide to catalog entries |
-| [docs/CONFIG_SCHEMA.md](docs/CONFIG_SCHEMA.md) | Complete configuration reference |
-| [docs/BLOCKERS.md](docs/BLOCKERS.md) | Open questions owned by site maintainers |
-| [docs/STATUS.md](docs/STATUS.md) · [docs/CHANGELOG.md](docs/CHANGELOG.md) | Implementation status and history |
+## Configuration
 
-## Build / typecheck / validate
+The launcher reads one local `launcher.yaml`. That file is the trust root: it owns security and access policy and may also contain a local catalog. The active file can be selected with `ELI_LAUNCHER_CONFIG`; otherwise the application checks the per-user configuration location and packaged/development defaults.
 
-Everything in this block runs on Windows, macOS and Linux:
+Operational catalog/site data can additionally come from the Git-backed config repository. Host and zone files may supply local machine values, site identity, actions, and catalog entries, but they cannot change local `security` or `access` policy. An ordered filesystem `catalog.sources` mechanism remains supported for deployments that distribute catalogs as files rather than through Git.
 
-```sh
-npm test                             # regression tests for filtering, launch validation, UI palette, and config
-npm run typecheck                    # tsc -b (main+preload+shared+scripts, and renderer)
-npm run build                        # electron-vite build -> ./out
-npm run check                        # typecheck + build in one go
-npm run validate-config              # validate config/launcher.yaml with the real parser
-npm run validate-config -- <path>    # validate a specific YAML (exit 1 on error)
-npm run intake-to-yaml -- <csv>      # convert a completed intake sheet to YAML entries
-npm run smoke:hmi-lifecycle          # exercise the loopback lifecycle HTTP contract
-npm run verify                       # tests + build + four config validations
+See [docs/configuration.md](docs/configuration.md) for the authoritative schema and source precedence. The minimal runnable example is [config/launcher.yaml](config/launcher.yaml); [examples/launcher.full.yaml](examples/launcher.full.yaml) shows the supported generic options.
+
+Windows `.bat` and `.cmd` targets should be configured as the script itself. The launcher validates the script path against command policy and, on Windows, invokes it through `cmd.exe /c` internally. Do not rewrite batch targets as a bare `cmd.exe` command merely to make them launchable.
+
+## Architecture
+
+The main process is organized by responsibility:
+
+```text
+src/main/
+  index.ts          Electron composition and application lifecycle
+  config/           local configuration loading and trust policy
+  catalog/          Git/host/zone catalog resolution
+  launch/           launch policy, target materialization, execution
+  runtime/          process identity and observed runtime state
+  diagnostics/      logs, preflight checks, reports, launch observation
+  ipc.ts            renderer-facing IPC registration
+
+src/preload/         minimal context-isolated bridge
+src/renderer/        framework-free DOM renderer
+src/shared/          shared IPC names and cross-process types
 ```
 
-### Packaging
+Detailed process boundaries and launch flow are in [docs/architecture.md](docs/architecture.md). Security properties are in [SECURITY.md](SECURITY.md). Operator failures and packaging issues are in [docs/troubleshooting.md](docs/troubleshooting.md).
 
-```sh
-npm run dist                         # installers for the current OS -> ./release
-npm run dist:win                     # or target one explicitly
-npm run dist:mac
-npm run dist:linux
-npm run pack                         # unpacked directory only, much faster
-npm run smoke:packaged               # start the packaged build, prove it launches a real process
-```
+## Repository boundaries
 
-`npm run smoke:packaged` is the check that `npm test` cannot make: packaging is
-what changes where `${APP_ROOT}` points and whether a configured command exists
-on disk at all, so a green test suite says nothing about the shipped artifact.
-CI runs it on all three platforms.
+`src/`, generic `config/`, `examples/`, and the main unit tests describe the launcher product. `deployment/TESTZ/` contains TESTZ configuration, field evidence, screenshots, and historical notes. `tests/acceptance/` contains local executable contracts such as the Phoebus fixture. `tools/catalog-import/` contains catalog conversion tooling.
 
-macOS artifacts can only be built on macOS, and the `rpm` target needs
-`rpmbuild` installed. CI builds each platform on its native runner.
+These boundaries are intentional: TESTZ deployment material can be extracted later without changing the generic launcher architecture.
 
-### Linux/POSIX-only checks
+## Shared lifecycle coordination
 
-These need bash plus Linux tooling and are therefore not part of `npm run verify`:
+The launcher currently enforces instance policy from runtime state observed in the current launcher session. It does not implement the previously prototyped lifecycle REST contract because the repository contains no approved production service definition for it. The TESTZ loopback prototype is preserved only as historical evidence under `deployment/TESTZ/archive/lifecycle-prototype/`. See [ADR 0002](docs/adr/0002-lifecycle-integration.md) for the decision and its limitation.
 
-```sh
-npm run smoke:labview-contract       # execute exact-path POSIX launch fixtures
-npm run smoke:phoebus-local          # validate wrapper argv and local BOB assets
-npm run acceptance:local             # run the IOC + lifecycle + Electron + Phoebus acceptance
-npm run verify:linux                 # verify + Phoebus assets
-```
+## Diagnostics
 
-## Executable local acceptance
+The application writes structured launch/config events to its Electron logs directory. Portable/diagnostic runs can also produce a field report and event capture; see [docs/troubleshooting.md](docs/troubleshooting.md#diagnostics-and-field-reports).
 
-`npm run acceptance:local` exercises the joined local stack through the built
-Electron main process. It verifies the supplied IOC with the required `caget`
-and `camonitor`, prepares the static mock records and in-memory flashlamp
-fanout with a complete `caput` audit, starts the loopback lifecycle sidecar, applies the tracked
-alarm layout first, launches both LabVIEW contract fixtures and three Phoebus
-BOBs through IPC, captures lifecycle/runtime/argv evidence, and then restores
-the memento in a fresh Phoebus process. It stops only processes that it started
-or identified from run-specific receipts.
+## Releases and history
 
-Prerequisites are Linux, Docker access, `npm ci`, the loaded
-`laser-mockup-ioc:ready` image, `Xvfb`, `scrot`, `xwininfo`, `lsof`, `jq`, and a
-Python interpreter with the dependencies from
-`services/hmi-lifecycle-api/requirements.txt`. JWM is used when available.
-Bootstrap installs the SHA-256-locked Phoebus/JDK artifacts under ignored
-`.local/phoebus/`; the initial download is about 487 MB. If the Python is not in
-the standard local paths, set `ELI_HMI_LIFECYCLE_PYTHON` to its executable.
-
-Each run creates an exclusive ignored directory below
-`.local/acceptance/<UTC timestamp>.<random suffix>/`,
-including literal CA output, JSON launch/lifecycle records, exact NUL-delimited
-argv captures, logs, window trees, and screenshots. The tracked sample images
-are `reference-screenshots/05-local-phoebus-live.png`,
-`06-local-alarm-layout-restored.png`, and
-`07-local-acceptance-launcher.png`. The expanded operator-style mock is recorded
-in `08-local-realistic-overview.png`, `09-local-realistic-cooling.png`,
-`10-local-realistic-timing-control.png`, and
-`11-local-realistic-launcher.png`.
-
-This acceptance config contains explicit local contracts. The `.exe` files are
-POSIX fixtures, not NI LabVIEW binaries. The lifecycle sidecar is not the
-unresolved site lifecycle API, and the memento uses a local alarm root without
-a site alarm server. See `docs/STATUS.md` and `docs/BLOCKERS.md` for the ticket buckets.
-
-## Collecting real GUI entries from L4 users
-
-`intake/L4_GUI_INTAKE.csv` is a blank collection sheet. Maintainers hand it to
-GUI owners, who fill one row per GUI (name, technology, section, how it starts).
-Convert completed rows to YAML deterministically:
-
-```sh
-npm run intake-to-yaml -- intake/L4_GUI_INTAKE.csv -o converted.yaml
-npm run validate-config -- converted.yaml   # same validator the app uses
-```
-
-Only rows marked `Enabled = yes` are converted; invalid rows abort with
-row-numbered errors (the converter never guesses values). Merge the resulting
-`entries:` into the deployed `launcher.yaml`. See **docs/CONFIG_HOWTO.md** §6.
-
-## Point at a different config
-
-```sh
-# Linux/macOS
-ELI_LAUNCHER_CONFIG=/absolute/path/to/launcher.yaml npm start
-# Windows (PowerShell)
-$env:ELI_LAUNCHER_CONFIG="C:\ELI\launcher\launcher.yaml"; npm start
-```
-
-If `ELI_LAUNCHER_CONFIG` is unset, the app searches (in order) the current
-working directory, the app path, the packaged resources dir, and the executable
-dir — each for `config/launcher.yaml`.
-
----
-
-## Git-backed configuration (config repo)
-
-The launcher can take its machine and zone configuration from a git repository
-instead of hand-maintained local files. On startup it clones or updates that repo,
-picks the file matching its own hostname, follows the `zone:` key in that file to
-the matching zone file, and folds both into the config model.
-
-**The feature is off unless `ELI_LAUNCHER_CONFIG_REPO_URL` is set.** With it unset
-the launcher behaves exactly as it did before, so this can be rolled out one
-machine at a time.
-
-The launcher is **read-only** against the config repo. It never commits, pushes,
-or writes to the remote.
-
-### Repo layout
-
-```
-<repo-root>/
-└── launcher/                     # ELI_LAUNCHER_CONFIG_REPO_SUBPATH, default "launcher"
-    ├── host/                     # one file per machine
-    │   ├── TESTZ-Deploy.yaml
-    │   └── L4-Operator-01.yaml
-    └── zone/                     # one file per zone
-        ├── TESTZ.yaml
-        └── L4.yaml
-```
-
-A host file carries this machine's paths, the lifecycle server address, and the
-name of the zone it belongs to:
-
-```yaml
-zone: TESTZ                                   # -> local.zoneSymbol, and selects zone/TESTZ.yaml
-P4-workspace: D:\Workspaces\Perforce\TESTZ_dev  # -> local.workspaceRoot
-css-gui: D:\Workspaces\css-gui                # -> local.cssGuiRoot
-css-install: C:\CSS Phoebus\product-5.0.2     # -> local.phoebus.installRoot
-hmi-server: testz-deploy20:8082               # -> local.hmiApi.baseUrl (+ local.hosts)
-local:                                        # optional: any native launcher setting
-  phoebus:
-    serverPort: 4918
-```
-
-A zone file carries the launchable HMIs, grouped by platform:
-
-```yaml
-labview-dev:                    # -> target kind: labview-dev
-  - ioc-name: Camera Manager
-    host: RMC00-001             # also shown in the launcher's RMC column
-    ioc-type: Camera Manager
-    exe: CMD.exe
-labview-epics:                  # -> target kind: labview-epics
-  - gui-name: Vacuum Overview
-    gui-type: Vacuum
-    exe: Vacuum.exe
-css:                            # -> target kind: phoebus
-  - name: Cooling Overview
-    resource: cooling.bob       # or `layout: true`; `app:` refines a resource
-web:                            # -> target kind: web
-  - name: Operator Logbook
-    url: https://logbook.example.org
-zone: TESTZ                     # optional metadata, not an HMI group
-local: {}                       # optional zone-wide defaults, overridden by the host file
-launcher:                       # optional launcher chrome owned by the zone
-  appName: L4 Launcher — TESTZ
-  quickActions: [...]           # replaces the root file's, never appends
-  moreActions: [...]
-```
-
-An empty group (`css:` with nothing after it) is valid. Optional per-item
-`id`, `technology`, `section`, `note`, and `platform` keys override the defaults.
-Entry ids are generated deterministically (`labview-dev-<ioc-name>-<host>`), so
-one IOC name may appear on several hosts without colliding.
-
-Required keys per group: `labview-dev` needs `ioc-name`, `host`, `ioc-type`,
-`exe`; `labview-epics` needs `gui-name`, `gui-type`, `exe`; `css` needs `name`
-plus either `resource` or `layout: true` (`app` refines a resource and cannot be
-used alone); `web` needs `name` and `url`. A missing key fails the load naming the
-file, the group, the item position, and the remedy.
-
-### Environment variables
-
-| Name | Purpose | Required | Default | Example |
-|---|---|---|---|---|
-| `ELI_LAUNCHER_CONFIG_REPO_URL` | HTTPS URL of the config repo. **Unset = feature off.** | To enable | *(unset)* | `https://github.com/eli-eric/eli-hmi-config.git` |
-| `ELI_LAUNCHER_CONFIG_REPO_TOKEN` | HTTPS credential. Unset ⇒ anonymous clone is attempted. | For a private repo | *(unset)* | `ghp_…` |
-| `ELI_LAUNCHER_CONFIG_REPO_USERNAME` | Username half of the credential. Needed for GitLab deploy tokens; leave unset for GitHub. | No | *(unset)* | `eli-launcher-deploy` |
-| `ELI_LAUNCHER_CONFIG_REPO_REF` | Branch, tag, or commit SHA to pin to. | No | remote default branch | `main`, `v1.4.0`, `f40748b…` |
-| `ELI_LAUNCHER_CONFIG_REPO_SUBPATH` | Directory inside the repo holding `host/` and `zone/`. | No | `launcher` | `launcher` |
-| `ELI_LAUNCHER_CONFIG_CACHE_DIR` | Where the checkout is cached. | No | `<userData>/config-repo`; `<tmp>/eli-hmi-launcher-config-repo` for CLI tools | `C:\ProgramData\ELI\config-repo` |
-| `ELI_LAUNCHER_CONFIG_HOSTNAME` | Override the machine identity (VMs, containers, testing). | No | OS hostname | `TESTZ-Deploy` |
-| `ELI_LAUNCHER_CONFIG_FETCH_TIMEOUT_MS` | Network budget per attempt. | No | `10000` | `20000` |
-| `ELI_LAUNCHER_CONFIG_OFFLINE` | Skip the network; use the cache only. | No | `0` | `1` |
-
-`ELI_LAUNCHER_CONFIG` (the existing local config path) is unchanged and still
-required — see *Precedence* below.
-
-### Credentials for a private config repo
-
-The configuration repository is **private by design** — it describes real
-machines and real control-room paths. A token is therefore the normal deployment,
-not an edge case. Token auth over HTTPS is not subject to interactive 2FA on any
-of these forges: the token *is* the second factor, so an unattended control-room
-machine never sees a prompt.
-
-| Forge | What to create | `…_USERNAME` | `…_TOKEN` |
-|---|---|---|---|
-| GitHub | Fine-grained PAT, or a classic PAT with `repo` | leave unset | the token |
-| GitLab | **Deploy token** (read_repository) — the recommended one: scoped to this repo, no user attached | the deploy token's username | the token |
-| GitLab | Project/personal access token (`read_repository`) | `oauth2` | the token |
-| Gitea / Forgejo | Access token with read scope | leave unset | the token |
-| Bitbucket | App password (Repositories: Read) | the account name | the app password |
-
-Grant **read-only** access. The launcher never writes to the config repo.
-
-If both variables are unset the launcher attempts an anonymous clone, which is
-what a public mirror or an internal unauthenticated host needs.
-
-### Resolution order
-
-```
-1. obtain the repo      cache absent  -> clone --depth 1 --single-branch <ref>
-                        cache present -> fetch + checkout --force <ref>
-                        git error     -> discard cache, re-clone once
-                        network error -> use cache (STALE) or fail if none
-
-2. find the host file   <subpath>/host/, case-insensitive scan
-                        try FQDN            e.g. testz-deploy.eli.example.cz
-                        then short name     e.g. testz-deploy
-                        no match            -> HARD FAIL, naming what exists
-
-3. find the zone file   read `zone:` from the host file (required)
-                        <subpath>/zone/, case-insensitive scan
-                        no match            -> HARD FAIL, listing available zones
-
-4. merge                zone `local:`   (base)
-                        host kebab keys (override)
-                        host `local:`   (override, wins)
-
-5. apply                merged values  -> the launcher's `local:` model
-                        zone HMI groups -> entries, as a catalog source
-```
-
-Names are matched **case-insensitively** so the same repo resolves identically on
-Windows and Linux — `TESTZ-Deploy.yaml` matches a hostname of `testz-deploy`. Two
-files whose names differ only by case are rejected as ambiguous.
-
-### How `css-install` and `hmi-server` are interpreted
-
-**`css-install`** is a Phoebus install *directory*, while `local.phoebus.executable`
-is a *file*. The launcher probes the directory for `phoebus.bat`, then
-`phoebus.sh`, then `phoebus`, and uses the first that exists. If none exist — the
-normal case when checking a Windows deployment from a POSIX workstation — it falls
-back to the platform default so the config still loads, and the missing path is
-reported by the ordinary existence check at launch. An explicit
-`local.phoebus.executable` always wins.
-
-**`hmi-server`** becomes the lifecycle API base URL:
-
-| Value in the host file | Resulting `local.hmiApi.baseUrl` | Transport |
-|---|---|---|
-| `testz-deploy20:8082` | `http://testz-deploy20:8082/api/lifecycle/v1` | plain HTTP, opt-in recorded |
-| `https://hmi.example.org` | `https://hmi.example.org/api/lifecycle/v1` | strict |
-| `https://hmi.example.org/lifecycle/v2` | used verbatim | strict |
-
-A value with no scheme reads as the author asserting a trusted site LAN, so the
-launcher accepts plain HTTP for it and records
-`local.hmiApi.allowInsecureTransport: true` — visible in `dump-config` and logged
-at startup, never silent. Two guards keep that honest:
-
-- **A token is refused over plain HTTP to a non-loopback host**, opt-in or not. A
-  bearer credential must never leave the machine in cleartext.
-- Setting `local.hmiApi.allowInsecureTransport: false` in the host file or the
-  root config restores the strict rule, after which a scheme-less `hmi-server`
-  fails with an error telling you to write an `https://` URL.
-
-The raw value also stays available as `${local.hosts.hmi-server}`.
-
-### Merge rules
-
-- Mappings merge **key by key, recursively**.
-- Scalars replace.
-- **Lists replace wholesale — they never concatenate.** A zone list is a complete
-  catalogue, so appending would make removal from a host file impossible.
-- A key that is absent or explicitly `null` does **not** override. Use an empty
-  list or empty string to clear a value deliberately.
-
-### Precedence
-
-| Setting | Winner |
-|---|---|
-| `local:` machine values | **config repo** (host file beats zone file beats `config/launcher.yaml`) |
-| `entries:` | **config repo** zone file beats inline entries and filesystem catalogs |
-| `appName`, `quickActions`, `moreActions` | **config repo** `launcher:` block (host beats zone) when present, else `config/launcher.yaml` |
-| `security:`, `access:` | **local `config/launcher.yaml` only — never the config repo** |
-
-`security:` is intentionally not overlayable. The config file is a trust root that
-decides which commands may be spawned; letting a pushable repo relax
-`allowedCommandRoots` would turn write access to that repo into code execution on
-every workstation. This is why `config/launcher.yaml` is still required.
-
-### Failure modes
-
-| Situation | Launcher behaviour | Operator-visible signal |
-|---|---|---|
-| Repo reachable, everything resolves | Starts normally | `Config repo resolved` log, `source: fresh` |
-| Network down, cache present | **Starts on the cached commit** | `CATALOG STALE` badge; warn log with commit SHA + fetch timestamp |
-| Network down, no cache, no local config | Refuses to start | Config error window naming the URL, cache path, and remedy |
-| Local cache corrupted | Discards it and re-clones once | Warning log; starts normally |
-| Hostname has no host file | Refuses to start | Error naming hostname tried, files present, and the remedy |
-| Host file has no `zone:` key | Refuses to start | Error naming the file and the missing key |
-| `zone:` names a missing zone file | Refuses to start | Error listing available zones |
-| Malformed YAML / missing required key | Refuses to start | Error naming file, key, and remedy |
-| Bad ref (branch/tag/SHA) | Refuses to start (no retry) | Error naming `ELI_LAUNCHER_CONFIG_REPO_REF` |
-| Remote hangs | Abandoned after the timeout | Falls back to cache, or the error above |
-
-Startup cost is bounded: one 10 s attempt plus one retry (500 ms backoff), so the
-worst case is about **20.5 s** before the launcher either starts on cache or shows
-the error window. It never hangs indefinitely.
-
-### Cache
-
-Default `<userData>/config-repo`, created `0700` (no-op on Windows):
-
-```
-<cache>/repo/              the shallow checkout
-<cache>/fetch-state.json   {url, ref, commitSha, fetchedAt}, written atomically
-```
-
-The cache holds only configuration, never the token.
-
-### Token handling
-
-The token is passed to the git client through an in-memory callback and becomes
-an `Authorization` header for the duration of each request. It is **not** written
-into the remote URL in `.git/config`, **not** passed as a command-line argument
-(no child process is spawned — the git client is pure JavaScript), and **not**
-logged: every error string, including the git client's own, is redacted first.
-
-### Troubleshooting: "the launcher started with stale config"
-
-`CATALOG STALE` in the UI means the config repo could not be refreshed and the
-launcher fell back to the last good commit. Work down this list:
-
-1. **Find the evidence.** Open the launch log (path is printed at startup;
-   `<userData>/logs/launcher.log.jsonl`) and look for `Config repo resolved`.
-   `"source":"cached"` confirms the fallback, and `commitSha` + `fetchedAt` tell
-   you how old the configuration is.
-2. **Check the obvious switch.** Is `ELI_LAUNCHER_CONFIG_OFFLINE` set to `1` on
-   this machine? That forces the cache and skips the network entirely.
-3. **Reproduce it without the UI:**
-   ```sh
-   npm run dump-config
-   ```
-   It prints the same resolution with the reason on stderr, secrets redacted.
-4. **Check reachability** of `ELI_LAUNCHER_CONFIG_REPO_URL` from *this* machine.
-   Proxy, DNS, and firewall rules are the usual causes.
-5. **Check the credential.** An expired or revoked token looks like an auth
-   failure in the warning. If the repo is public, unset the token and retry.
-6. **Check the ref.** A branch or tag deleted upstream fails the fetch; confirm
-   `ELI_LAUNCHER_CONFIG_REPO_REF` still exists.
-7. **Confirm the machine identity.** `Config repo resolved` reports `hostname`
-   and `hostnameSource`. If the machine was renamed, either add the new host file
-   upstream or set `ELI_LAUNCHER_CONFIG_HOSTNAME`.
-8. **Force a clean fetch** as a last resort — delete the cache directory
-   (`cacheDir` in the log) and restart. The launcher will re-clone.
-
-If the launcher refuses to start instead, the error window names the file, the
-key, and the remedy; steps 4–7 apply the same way.
-
-### Seeing it run
-
-```sh
-npm run demo:git-config
-```
-
-Builds a small configuration repository in a temp directory, serves it over the
-real git smart-HTTP protocol behind a **required token**, and starts the launcher
-against it. Every row in the window comes from the repo's zone file; the local
-config file contributes only the security policy. Nothing contacts a remote host.
-
-| Flag | What it shows |
-|---|---|
-| *(none)* | Normal start — rows sourced from the zone file |
-| `--host DEMO-Beamline-02` | Same binary, different machine identity: different zone, different paths, `hmi-server` wired |
-| `--offline` | The git server is killed after the first fetch: cached start with `CATALOG STALE` |
-| `--real` | Against the real private `eli-eric/eli-hmi-config` (uses `ELI_LAUNCHER_CONFIG_REPO_TOKEN`, or `gh auth token`) |
-| `--dump` | No window — prints the resolved effective config |
-| `--headless` | Runs under `xvfb-run` for machines with no display |
-
-The demo prints the resolution (hostname → host file → zone → commit) and a
-token-leak check before the window opens, and refuses to start if the token is
-found anywhere it should not be. Clicking a LabVIEW row launches a real fixture
-process and writes a capture file to `.local/demo-captures/`.
-
-### Migration from local config files
-
-The git path is **opt-in per machine**. Nothing changes until
-`ELI_LAUNCHER_CONFIG_REPO_URL` is set on that machine.
-
-- **Machines not yet migrated** keep using `config/launcher.yaml` exactly as
-  before. That path is **not deprecated**.
-- **Migrated machines** still need `config/launcher.yaml`, because `security:` and
-  `access:` are read only from it — it stays the trust root. Everything else,
-  including `appName` and the quick/more action buttons, can move into the config
-  repo's `launcher:` block.
-- Any `local:` values left in the local file are overridden by the config repo, so
-  they can be pruned after migration rather than before.
-- **Rollback** is unsetting `ELI_LAUNCHER_CONFIG_REPO_URL` and restarting. No
-  cached state has to be cleaned up first.
-
----
-
-## How to test the UI
-
-- **Row click** (or focus a row and press **Enter**/**Space**): launches that GUI.
-- **Data Browser** / **Alarm System** buttons (top right): quick-action launches.
-- **More…**: opens the services menu. **Esc** or a click outside closes it.
-- **Search**: matches **Name** and **Note** only. Technology and Section are
-  covered by the dropdowns instead.
-- **Technology / Section** dropdowns: filter the table. Options are derived
-  from the loaded config. An empty result shows a clear empty state. These are
-  custom accessible comboboxes (ARIA listbox), not native `<select>`s, so the
-  closed, focused, and open states render identically on Linux, Windows, and
-  macOS. Full keyboard support: open with **Enter/Space/↓**, move with
-  **↑/↓/Home/End**, type-ahead to jump, **Enter** to choose, **Esc** to close.
-- A **successful launch shows nothing** — the user clicks and the GUI opens.
-  A **failed launch** (missing or non-executable command, invalid working
-  directory, unmounted folder, command outside the allow-list, …) shows a
-  black-and-white, dismissible error banner with the reason.
-- The **State** column is session-local. `RUNNING` requires a launcher-owned PID
-  and matching process start identity; `SHARED` means the configured Phoebus
-  server port is reachable; `HANDOFF` means Electron passed a browser/folder
-  request to another application. These labels are not interchangeable.
-- LabVIEW entries default to one launcher-observed instance and fail closed on
-  stale or unknown state. Main serializes two rapid requests for the same id.
-  This cannot detect an HMI started outside the launcher session until the HMI
-  API integration supplies external state.
-
-> Process targets have a short startup grace window. A missing executable or an
-> immediate non-zero wrapper exit is reported as a failure. After that window,
-> the local registry periodically reconciles process identity. Browser tabs and
-> individual Phoebus panels remain unobservable because they do not map 1:1 to
-> launcher-owned child PIDs.
-
-Because there is intentionally no success UI, the authoritative signals for
-testing are the launched GUI itself, the mock log above, and the structured
-launch log below (which records every attempt, success or failure).
-
----
-
-## Diagnostics: structured launch log
-
-Independently of the mock scripts, every launch attempt is appended as one JSON
-object per line (JSONL) to a log in the OS app-logs directory:
-
-- Linux: `~/.config/eli-hmi-launcher/logs/launcher.log.jsonl`
-- Windows: `%APPDATA%\eli-hmi-launcher\logs\launcher.log.jsonl`
-- macOS: `~/Library/Logs/eli-hmi-launcher/launcher.log.jsonl`
-
-Each launch record contains: timestamp, `id`, `label`, `kind`, the resolved
-`command`+`args` / `url` / `path`, `ok`, `error` (on failure), and `durationMs`.
-Failures retain their resolved argv so path and quoting faults can be diagnosed.
-The target environment is never written. Values following credential-like
-flags (`token`, `password`, `secret`, API keys, authorization) and matching URL
-query parameters are replaced with `[REDACTED]`. Do not place opaque secrets in
-unlabelled argv positions. Config-load success/failure is also logged. Example:
-
-```json
-{"ts":"2026-…Z","type":"launch","id":"camera-manager-alena","label":"Camera Manager Alena","kind":"process","command":"/opt/eli/l4-launchers/open-camera-manager-alena.sh","args":[],"ok":true,"durationMs":12}
-```
-
----
-
-## Configuration & security (summary)
-
-Full reference: **docs/CONFIG_SCHEMA.md**. The essentials:
-
-- The config file is a **trust root**. `process` targets run with the launcher
-  user's privileges. Anyone who can write the file (or its directory) can make
-  every workstation that loads it run arbitrary commands.
-- Deploy the config **read-only** to non-privileged users. On POSIX the launcher
-  **refuses to load a world-writable config** unless
-  `security.allowInsecureConfigPermissions: true`.
-- Constrain process launches with the `security` block:
-  - `allowedCommandRoots`: a resolved process `command` containing a path must
-    live under one of these dirs (enforced at launch, symlinks resolved).
-  - `allowBareCommands`: set `false` to reject bare PATH-resolved names.
-- Web targets are HTTP(S)-only (validated at load). Folder opens report a clear
-  error if the path is missing/unmounted.
-- Duplicate ids across entries + quickActions + moreActions are rejected at load.
-- Launch access policies resolve from platform defaults to per-item overrides
-  and are enforced in main before spawn. LabVIEW defaults to `maxInstances: 1`;
-  write exclusivity is modeled, but its site-specific mode signal remains a
-  blocker. Unknown or stale state defaults to fail-closed.
-- Malformed config **fails visibly**: the app opens an error window explaining
-  the problem instead of exiting silently.
-- When `local.hmiApi.baseUrl` is present, main coordinates leases, heartbeats,
-  external state, and atomic launch reservations through the versioned local
-  lifecycle adapter. With no URL, the adapter reports `disabled` and performs
-  no lifecycle request. The bundled service is for local acceptance; the site
-  owner and contract remain BLK-001.
-
-`config/launcher.yaml` is the runnable mock config.
-`config/launcher.example-real.yaml` is the deployment template (strict security
-posture, placeholder paths).
-`config/local-acceptance.yaml` is the executable Linux contract configuration;
-it is not a deployment template.
-
-**Adding your GUIs to the launcher (for L4 users):** see **docs/CONFIG_HOWTO.md** —
-a short, copy-paste guide for filling in entries without reading the full
-schema reference.
-
----
-
-## Scope (v1)
-
-In: L4 flat table, search over name/note, Technology + Section filters,
-row-click launch, quick actions, More menu, Pico CSS standard controls, six
-typed targets, ordered external catalogs, machine-local configuration, Phoebus
-server reuse, session-local runtime state, OS command overrides, config
-variables, main-process access policies, security allow-list, launch logging,
-regression tests, and CI.
-
-Blocked or undecided site integration is listed in `docs/BLOCKERS.md`, including the
-HMI Python REST contract, alarm memento, Phoebus app names, write-mode meaning,
-and real L4 values. In-app config editing, database storage, telemetry, and an
-auto-updater are not part of this work order.
-
----
-
-## UI component library
-
-The renderer imports `@picocss/pico` locally through the build; it does not
-depend on a CDN at runtime. Pico provides the standard input, button, dropdown,
-and table foundations. Launcher CSS centrally overrides Pico's color tokens with
-only `#000000` and `#ffffff`, so theme defaults and system accent colors cannot
-leak into any interaction state. `styles.css` then adds the launcher layout,
-single-scroll model, compact sizing, and accessible filter combobox without
-reimplementing Pico's standard controls.
-
-The two filter dropdowns are a custom accessible combobox (`combobox.ts`,
-ARIA "select-only combobox" pattern) rather than a native `<select>`, because a
-native select's popup list is drawn by the OS and cannot be themed consistently
-across platforms. The combobox draws its own listbox from the same Pico
-variables, keeping every state consistently black and white, and keeps full
-keyboard and screen-reader semantics (`role="combobox"`/`listbox"`/`option"`,
-`aria-expanded`, `aria-activedescendant`, `aria-selected`).
-
-## Logo
-
-The header uses a **text wordmark** (`L4 LAUNCHER`). No official ELI/L4 image
-logo was supplied with this work, and none was invented. If maintainers provide
-an official asset, drop it in and replace the `<h1>` wordmark, preserving its
-aspect ratio. See `docs/BLOCKERS.md`.
+Significant user/operator-visible changes are recorded in [CHANGELOG.md](CHANGELOG.md). TESTZ implementation history and unresolved historical deployment questions are archived under `deployment/TESTZ/archive/`; they are not product documentation.

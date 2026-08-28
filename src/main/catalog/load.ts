@@ -1,0 +1,267 @@
+// Resolves the Git-backed host/zone configuration into the local config model.
+//
+//   env -> ensureConfigRepo (clone/fetch/cache/offline)
+//       -> resolve host file by hostname
+//       -> read `zone:` from the host file, resolve the zone file
+//       -> adapt the zone's grouped HMI lists into launcher entries
+//       -> merge zone `local:` (base) under host values (override)
+//       -> hand a ConfigOverlay to the launcher's existing config loader
+//
+// This module never touches electron, so `npm run validate-config` and the unit
+// tests can drive the whole pipeline headlessly.
+
+import os from "node:os";
+import path from "node:path";
+import type { ConfigRepoProvenance } from "../../shared/types";
+import type { ConfigOverlay } from "../config/load";
+import { deepMerge } from "../config/merge";
+import {
+  DEFAULT_FETCH_TIMEOUT_MS,
+  ensureConfigRepo,
+  type ConfigRepoDeps,
+  type ConfigRepoResult,
+} from "./repo";
+import { hostPassthrough, launcherBlock, mapHostDocumentToLocal } from "./host";
+import {
+  readZoneName,
+  resolveHostDocument,
+  resolveHostnameCandidates,
+  resolveZoneDocument,
+} from "./files";
+import { adaptZoneDocument } from "./zone";
+
+export const ENV = {
+  url: "ELI_LAUNCHER_CONFIG_REPO_URL",
+  token: "ELI_LAUNCHER_CONFIG_REPO_TOKEN",
+  username: "ELI_LAUNCHER_CONFIG_REPO_USERNAME",
+  ref: "ELI_LAUNCHER_CONFIG_REPO_REF",
+  subpath: "ELI_LAUNCHER_CONFIG_REPO_SUBPATH",
+  cacheDir: "ELI_LAUNCHER_CONFIG_CACHE_DIR",
+  hostname: "ELI_LAUNCHER_CONFIG_HOSTNAME",
+  // A checked-out config tree on disk instead of a git remote. Lets a build ship
+  // the catalog with it, for machines with no route to the private repo.
+  dir: "ELI_LAUNCHER_CONFIG_REPO_DIR",
+  timeoutMs: "ELI_LAUNCHER_CONFIG_FETCH_TIMEOUT_MS",
+  offline: "ELI_LAUNCHER_CONFIG_OFFLINE",
+} as const;
+
+export const DEFAULT_SUBPATH = "launcher";
+
+export type EnvLike = Record<string, string | undefined>;
+
+export type DynamicConfigOptions = {
+  url: string;
+  // When set, the catalog is read from this already-checked-out directory and
+  // no git operation happens at all.
+  localDir?: string | undefined;
+  token?: string | undefined;
+  username?: string | undefined;
+  ref?: string | undefined;
+  subpath: string;
+  cacheDir: string;
+  hostnameOverride?: string | undefined;
+  timeoutMs: number;
+  offline: boolean;
+};
+
+export type DynamicConfigResult = {
+  overlay: ConfigOverlay;
+  provenance: ConfigRepoProvenance;
+  warnings: string[];
+};
+
+function text(env: EnvLike, key: string): string | undefined {
+  const value = env[key]?.trim();
+  return value ? value : undefined;
+}
+
+function readBoolean(env: EnvLike, key: string): boolean {
+  const value = env[key]?.trim().toLowerCase();
+  if (!value) {
+    return false;
+  }
+  if (["1", "true", "yes", "on"].includes(value)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(value)) {
+    return false;
+  }
+  throw new Error(
+    `\`${key}\` must be a boolean (1/0, true/false, yes/no, on/off), got '${value}'. ` +
+      `Remedy: correct the environment variable or unset it.`,
+  );
+}
+
+function readTimeout(env: EnvLike, key: string): number {
+  const raw = env[key]?.trim();
+  if (!raw) {
+    return DEFAULT_FETCH_TIMEOUT_MS;
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `\`${key}\` must be a positive integer number of milliseconds, got '${raw}'. ` +
+        `Remedy: correct the environment variable or unset it to use the ${DEFAULT_FETCH_TIMEOUT_MS} ms default.`,
+    );
+  }
+  return value;
+}
+
+// The default cache location for non-Electron callers (validate-config, tests).
+// The Electron main process passes the per-user `userData` directory instead.
+export function defaultCacheDir(): string {
+  return path.join(os.tmpdir(), "eli-hmi-launcher-config-repo");
+}
+
+// Returns undefined when the feature is switched off, i.e. no repo URL is set.
+// In that case the launcher behaves exactly as it did before this feature.
+export function readDynamicConfigEnv(
+  env: EnvLike,
+  defaults: { cacheDir?: string; localDir?: string } = {},
+): DynamicConfigOptions | undefined {
+  const url = text(env, ENV.url);
+  // An explicit directory wins over a bundled one, and either removes the need
+  // for a URL: there is nothing to clone.
+  const localDir = text(env, ENV.dir) ?? defaults.localDir;
+  if (!url && !localDir) {
+    return undefined;
+  }
+  return {
+    // The URL is only provenance when reading a directory; nothing fetches it.
+    url: url ?? `dir:${localDir}`,
+    ...(localDir ? { localDir } : {}),
+    token: text(env, ENV.token),
+    username: text(env, ENV.username),
+    ref: text(env, ENV.ref),
+    subpath: text(env, ENV.subpath) ?? DEFAULT_SUBPATH,
+    cacheDir: text(env, ENV.cacheDir) ?? defaults.cacheDir ?? defaultCacheDir(),
+    hostnameOverride: text(env, ENV.hostname),
+    timeoutMs: readTimeout(env, ENV.timeoutMs),
+    offline: readBoolean(env, ENV.offline),
+  };
+}
+
+export function configRootFor(repo: ConfigRepoResult, subpath: string): string {
+  return subpath ? path.join(repo.repoDir, subpath) : repo.repoDir;
+}
+
+// Resolves host + zone inside an already-checked-out repo. Split out from
+// resolveDynamicConfig so tests can exercise resolution without any git at all.
+export function resolveFromCheckout(
+  repo: ConfigRepoResult,
+  options: Pick<DynamicConfigOptions, "subpath" | "hostnameOverride" | "url" | "cacheDir">,
+  hostnameFn?: () => string,
+): DynamicConfigResult {
+  const configRoot = configRootFor(repo, options.subpath);
+  const hostname = resolveHostnameCandidates({
+    override: options.hostnameOverride,
+    ...(hostnameFn ? { hostname: hostnameFn } : {}),
+  });
+  const host = resolveHostDocument(configRoot, hostname);
+  const zoneName = readZoneName(host);
+  const zone = resolveZoneDocument(configRoot, zoneName, host.filePath);
+
+  const adapted = adaptZoneDocument(zone.document, zone.filePath);
+  const hostMapping = mapHostDocumentToLocal(host.document, host.filePath);
+
+  // Zone values are defaults; host values override them key by key. Lists replace.
+  const zoneLocal = zone.document["local"];
+  const merged = deepMerge(
+    deepMerge(zoneLocal ?? {}, hostMapping.local),
+    hostPassthrough(host.document) ?? {},
+  );
+  const local = (merged && typeof merged === "object" && !Array.isArray(merged)
+    ? merged
+    : {}) as Record<string, unknown>;
+
+  // Launcher-level settings: zone is the base, the host overrides it, exactly as
+  // for `local:`. Absent on both means the root config file keeps deciding.
+  const launcherSettings = deepMerge(
+    launcherBlock(zone.document) ?? {},
+    launcherBlock(host.document) ?? {},
+  ) as Record<string, unknown>;
+  if (launcherSettings["appName"] !== undefined) {
+    throw new Error("Config-repo launcher settings use obsolete `appName`; rename it to `siteName`.");
+  }
+  const launcherSiteName =
+    typeof launcherSettings["siteName"] === "string" ? launcherSettings["siteName"] : undefined;
+
+  const warnings = [...repo.warnings, ...hostMapping.warnings, ...adapted.warnings];
+
+  return {
+    overlay: {
+      local,
+      ...(launcherSiteName ? { siteName: launcherSiteName } : {}),
+      ...(launcherSettings["quickActions"] !== undefined
+        ? { quickActions: launcherSettings["quickActions"] }
+        : {}),
+      ...(launcherSettings["moreActions"] !== undefined
+        ? { moreActions: launcherSettings["moreActions"] }
+        : {}),
+      entrySources: [
+        {
+          id: `zone:${zone.name}`,
+          entries: adapted.entries,
+          state: repo.source === "cached" ? "cached" : "fresh",
+          stale: repo.source === "cached",
+          path: zone.filePath,
+          loadedAt: repo.fetchedAt,
+          ...(repo.source === "cached"
+            ? { message: `Cached config repo commit ${repo.commitSha} fetched at ${repo.fetchedAt}.` }
+            : {}),
+        },
+      ],
+      warnings,
+    },
+    provenance: {
+      url: options.url,
+      ref: repo.ref,
+      commitSha: repo.commitSha,
+      fetchedAt: repo.fetchedAt,
+      source: repo.source,
+      cacheDir: options.cacheDir,
+      hostname: hostname.raw,
+      hostnameSource: hostname.source,
+      hostFile: host.filePath,
+      zone: zone.name,
+      zoneFile: zone.filePath,
+      entryCount: adapted.entries.length,
+    },
+    warnings,
+  };
+}
+
+export async function resolveDynamicConfig(
+  options: DynamicConfigOptions,
+  deps: ConfigRepoDeps,
+): Promise<DynamicConfigResult> {
+  // A directory is already a checkout: skip git entirely rather than pretending
+  // to fetch. Provenance says so plainly so a report can never imply the
+  // catalog was refreshed from a remote when it was read off the disk.
+  if (options.localDir) {
+    return resolveFromCheckout(
+      {
+        repoDir: options.localDir,
+        ref: "(bundled)",
+        commitSha: "(bundled)",
+        fetchedAt: new Date().toISOString(),
+        source: "fresh",
+        warnings: [],
+      },
+      options,
+    );
+  }
+  const repo = await ensureConfigRepo(
+    {
+      url: options.url,
+      token: options.token,
+      username: options.username,
+      ref: options.ref,
+      cacheDir: options.cacheDir,
+      timeoutMs: options.timeoutMs,
+      offline: options.offline,
+    },
+    deps,
+  );
+  return resolveFromCheckout(repo, options);
+}

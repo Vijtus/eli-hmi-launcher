@@ -1,0 +1,29 @@
+# TESTZ-OPR04 — the TESTZ control-room workstation.
+#
+# Every path here was read off the machine itself on 2026-08-20 and confirmed
+# again by a full 15/15 launch on 2026-08-27, not guessed from a convention.
+#
+# Compare with TESTZ-Deploy.yaml: that machine keeps its workspace and css-gui
+# on D:, this one keeps both on C:. That difference is exactly what a host file
+# is for, and it is why one shared file cannot serve both.
+
+zone: TESTZ
+
+# The workspace ROOT, not the Deployment folder inside it. The launcher appends
+#   Common\ELI\IOCs\<ioc-type>\Builds\GUI Application\<exe>
+# so pointing this at ...\TESTZone\Deployment makes every LabVIEW entry resolve
+# one level too deep and fail as "not on this machine".
+P4-workspace: C:\Workspaces\TESTZ_dev_TESTZ-OPR04
+
+# Phoebus panels are resolved relative to this. panel\TESTZ\ was added here on
+# 2026-08-27; before that the zone had no panels on this machine at all.
+css-gui: C:\Workspaces\css-gui
+
+# The install DIRECTORY, not phoebus.bat. The launcher finds phoebus.bat inside
+# it. Started directly - the launch\launch_display_runtime.bat wrapper exits 1
+# on this machine and is not used.
+css-install: C:\CSS Phoebus\product-5.0.2
+
+# hmi-server is deliberately absent. Nothing lifecycle-related is configured for
+# this workstation, and the launcher logs one warning and carries on rather than
+# failing. Add it the day a lifecycle endpoint exists for TESTZ.

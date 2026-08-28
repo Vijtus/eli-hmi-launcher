@@ -8,8 +8,8 @@ import {
   renderFieldReport,
   resolveFieldReportTarget,
   type FieldReportEnvironment,
-} from "../src/main/field-report.ts";
-import type { PreflightFinding } from "../src/main/preflight.ts";
+} from "../src/main/diagnostics/report.ts";
+import type { PreflightFinding } from "../src/main/diagnostics/preflight.ts";
 
 function environment(env: Record<string, string | undefined> = {}): FieldReportEnvironment {
   return {
@@ -113,7 +113,7 @@ function finding(overrides: Partial<PreflightFinding>): PreflightFinding {
 
 function report(findings: PreflightFinding[], extra: Record<string, unknown> = {}): string {
   return renderFieldReport({
-    appName: "L4 Launcher",
+    title: "ELI HMI Launcher",
     appVersion: "0.4.0",
     hostname: "TESTZ-Deploy",
     platform: "win32",
@@ -171,7 +171,7 @@ test("a config-repo failure is reported even with no entries to check", () => {
   assert.match(text, /\*\*0 of 0 entries would launch on this machine\.\*\*/);
 });
 
-// Observed on a real machine: a run whose catalog failed to load reported
+// A failed catalog load must still report
 // "every catalog entry resolved to a runnable command", which is the opposite
 // of the truth and sends the reader looking in the wrong place.
 test("a run with no entries does not claim everything worked", () => {
@@ -273,4 +273,80 @@ test("a process still alive at the end of the watch is reported as running", () 
   });
   assert.match(text, /\*\*RUNNING\*\*/);
   assert.match(text, /still running 10s later/);
+});
+
+// The report listed every panel on the machine and, separately, said a panel was
+// missing — leaving the reader to join the two by eye across a listing of
+// hundreds. Observed with pm.bob: Phoebus said it could not find
+// C:\Workspaces\css-gui\pm.bob while the survey had the real path all along.
+test("a missing file is matched against what the survey actually found", () => {
+  const text = report(
+    [
+      finding({
+        id: "pm",
+        name: "Power Meters",
+        kind: "phoebus",
+        status: "missing",
+        resolvedCommand: "C:\\Workspaces\\css-gui\\pm.bob",
+        detail: "Phoebus starts, but the panel does not exist",
+      }),
+    ],
+    {
+      survey: [
+        {
+          root: "C:\\Workspaces\\css-gui",
+          exists: true,
+          topLevel: ["panel"],
+          executables: [],
+          panels: ["panel\\pm.bob", "panel\\centroids.bob"],
+          truncated: false,
+          scanned: 42,
+        },
+      ],
+    },
+  );
+  assert.match(text, /found a file with that name here/);
+  assert.match(text, /panel\\pm\.bob/);
+  // The unrelated panel must not be offered as a match.
+  assert.doesNotMatch(text, /found a file with that name here:.*centroids/);
+});
+
+test("no suggestion is invented when nothing matches", () => {
+  const text = report(
+    [finding({ id: "x", status: "missing", resolvedCommand: "C:\\nowhere\\ghost.bob" })],
+    {
+      survey: [
+        {
+          root: "C:\\Workspaces\\css-gui",
+          exists: true,
+          topLevel: [],
+          executables: [],
+          panels: ["panel\\pm.bob"],
+          truncated: false,
+          scanned: 1,
+        },
+      ],
+    },
+  );
+  assert.doesNotMatch(text, /found a file with that name here/);
+});
+
+test("a ready entry is never given a suggestion", () => {
+  const text = report(
+    [finding({ id: "ok", status: "ready", resolvedCommand: "C:\\Workspaces\\css-gui\\pm.bob" })],
+    {
+      survey: [
+        {
+          root: "C:\\Workspaces\\css-gui",
+          exists: true,
+          topLevel: [],
+          executables: [],
+          panels: ["panel\\pm.bob"],
+          truncated: false,
+          scanned: 1,
+        },
+      ],
+    },
+  );
+  assert.doesNotMatch(text, /found a file with that name here/);
 });

@@ -8,9 +8,9 @@ import {
   resolveHostDocument,
   resolveHostnameCandidates,
   resolveZoneDocument,
-} from "../src/main/host-zone-resolver.ts";
+} from "../src/main/catalog/files.ts";
 
-// Mirrors the real repo: launcher/host/TESTZ-Deploy.yaml + launcher/zone/TESTZ.yaml
+// Mirrors the deployed host/zone repository layout.
 function fixture(files: Record<string, string> = {}): { root: string; configRoot: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "eli-host-zone-"));
   const configRoot = path.join(root, "launcher");
@@ -52,7 +52,7 @@ test("a trailing dot on an FQDN is normalized away", () => {
   assert.deepEqual(resolved.candidates, ["box.example.org", "box"]);
 });
 
-// This is the regression that a naive path.join would produce: the real repo file
+// A naive path join fails on case-sensitive filesystems when the repository file
 // is `TESTZ-Deploy.yaml` while the normalized hostname is `testz-deploy`, so the
 // lookup must be a case-insensitive scan or it works on Windows and fails on Linux.
 test("host files match case-insensitively against the normalized hostname", () => {

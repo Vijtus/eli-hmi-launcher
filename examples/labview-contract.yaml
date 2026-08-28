@@ -1,4 +1,4 @@
-appName: LabVIEW local contract smoke
+siteName: LabVIEW local contract smoke
 
 local:
   workspaceRoot: '${APP_ROOT}/examples/labview-contract-workspace'
@@ -14,7 +14,7 @@ security:
 entries:
   - id: labview-contract-developer
     name: LabVIEW Developer contract fixture
-    technology: LabVIEW
+    technology: [LabVIEW]
     platform: LabVIEW
     access:
       maxInstances: 1
@@ -31,7 +31,7 @@ entries:
 
   - id: labview-contract-epics
     name: LabVIEW EPICS contract fixture
-    technology: LabVIEW
+    technology: [LabVIEW]
     platform: LabVIEW
     access:
       maxInstances: 1

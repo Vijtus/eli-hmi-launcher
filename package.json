@@ -2,7 +2,7 @@
   "name": "eli-hmi-launcher",
   "private": true,
   "version": "0.4.0",
-  "description": "Minimal L4 control systems GUI launcher built with Electron and a YAML configuration table.",
+  "description": "Config-driven Electron launcher for control-system HMIs.",
   "author": "ELI ERIC <controls@eli-beams.eu>",
   "license": "UNLICENSED",
   "homepage": "https://github.com/eli-eric/eli-hmi-launcher",
@@ -15,8 +15,6 @@
   },
   "main": "out/main/index.js",
   "scripts": {
-    "app": "node scripts/run.mjs",
-    "dev": "electron-vite dev",
     "start": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -24,12 +22,10 @@
     "validate-config": "tsx scripts/validate-config.ts",
     "dump-config": "tsx scripts/dump-config.ts",
     "demo:git-config": "tsx tools/demo-git-config.mts",
-    "intake-to-yaml": "tsx scripts/intake-to-yaml.ts",
-    "smoke:hmi-lifecycle": "tsx scripts/smoke-hmi-lifecycle.ts",
     "smoke:labview-contract": "tsx scripts/smoke-labview-contract.ts",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "smoke:phoebus-local": "tools/phoebus-local/self-test.sh",
-    "acceptance:local": "tools/run-local-acceptance.sh",
+    "smoke:phoebus-local": "tests/acceptance/phoebus/self-test.sh",
+    "acceptance:local": "tests/acceptance/run.sh",
     "check": "tsc -b && electron-vite build",
     "pack": "npm run check && electron-builder --dir",
     "dist": "npm run check && electron-builder",
@@ -37,11 +33,11 @@
     "dist:win": "npm run check && electron-builder --win",
     "dist:mac": "npm run check && electron-builder --mac",
     "test": "tsx --test tests/*.test.ts",
-    "verify": "npm test && npm run check && npm run validate-config && npm run validate-config -- config/launcher.example-real.yaml && npm run validate-config -- config/phoebus-local.yaml && npm run validate-config -- config/local-acceptance.yaml",
-    "verify:linux": "npm run verify && npm run smoke:phoebus-local"
+    "verify": "npm test && npm run check && npm run validate-config && npm run validate-config -- examples/launcher.full.yaml",
+    "verify:linux": "npm run verify && npm run smoke:phoebus-local",
+    "catalog-import": "tsx tools/catalog-import/intake-to-yaml.ts"
   },
   "dependencies": {
-    "@picocss/pico": "2.1.1",
     "isomorphic-git": "^1.41.5",
     "yaml": "2.9.0"
   },

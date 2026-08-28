@@ -6,7 +6,7 @@ import {
   redactSecret,
   REDACTED,
   TOKEN_PASSWORD,
-} from "../src/main/config-repo-auth.ts";
+} from "../src/main/catalog/auth.ts";
 
 const TOKEN = "ghp_SUPERSECRETTOKEN123456789";
 
