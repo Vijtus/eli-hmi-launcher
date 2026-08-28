@@ -243,3 +243,49 @@ export type ConfigLocation = {
   /** False when it sits inside the packaged app and editing it would be futile. */
   editable: boolean;
 };
+
+// ---------------------------------------------------------------------------
+// Config-repo settings entered in the launcher rather than the environment.
+// The token is never sent to the renderer: it is write-only from the UI's point
+// of view, and `tokenStored` is all the window needs to render its state.
+// ---------------------------------------------------------------------------
+
+export type RepoSettingsInput = {
+  url: string;
+  username: string;
+  /** Empty means "leave whatever is already stored alone". */
+  token: string;
+  ref: string;
+  subpath: string;
+  hostname: string;
+};
+
+export type RepoSettingsView = {
+  url: string;
+  username: string;
+  ref: string;
+  subpath: string;
+  hostname: string;
+  /** Whether a token is held, never the token itself. */
+  tokenStored: boolean;
+  /** Environment variable names currently overriding a stored value. */
+  overriddenByEnv: string[];
+  /** False when the platform offers no keyring, so a token cannot be kept. */
+  secureStorageAvailable: boolean;
+  /** The machine name used to pick the host file, for display. */
+  machineName: string;
+};
+
+export type RepoSettingsSaveResult = {
+  saved: boolean;
+  tokenStored: boolean;
+  message?: string;
+};
+
+export type RepoSettingsTestResult = {
+  ok: boolean;
+  /** Operator-facing summary: what was reached, or precisely what failed. */
+  message: string;
+  /** Set when the failure was a certificate trust problem, which has its own fix. */
+  certificateProblem?: boolean;
+};

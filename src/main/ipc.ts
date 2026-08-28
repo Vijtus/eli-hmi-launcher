@@ -5,6 +5,10 @@ import type {
   FieldReportInfo,
   LauncherConfig,
   LaunchResult,
+  RepoSettingsInput,
+  RepoSettingsSaveResult,
+  RepoSettingsTestResult,
+  RepoSettingsView,
   RuntimeSnapshot,
 } from "../shared/types";
 
@@ -14,6 +18,11 @@ type IpcDependencies = {
   launch(itemId: unknown): Promise<LaunchResult>;
   getFieldReport(): FieldReportInfo | null;
   getConfigLocation(): ConfigLocation | null;
+  getRepoSettings(): RepoSettingsView;
+  saveRepoSettings(settings: RepoSettingsInput): RepoSettingsSaveResult;
+  clearRepoSettings(): void;
+  testRepoSettings(settings: RepoSettingsInput): Promise<RepoSettingsTestResult>;
+  restartApp(): void;
 };
 
 export function registerIpc(deps: IpcDependencies): void {

@@ -43,6 +43,10 @@ export const ENV = {
   dir: "ELI_LAUNCHER_CONFIG_REPO_DIR",
   timeoutMs: "ELI_LAUNCHER_CONFIG_FETCH_TIMEOUT_MS",
   offline: "ELI_LAUNCHER_CONFIG_OFFLINE",
+  // Not read by this module: Node itself consumes it at startup. Named here
+  // so the settings screen and the clone failure can point at it without
+  // spelling the string in three places.
+  caCerts: "NODE_EXTRA_CA_CERTS",
 } as const;
 
 export const DEFAULT_SUBPATH = "launcher";

@@ -28,6 +28,7 @@
           </label>
         </section>
         <nav id="quick-actions" class="quick-actions" aria-label="Launcher actions"></nav>
+        <button id="open-settings" class="settings-button" type="button" title="Where the catalog comes from">Configuration…</button>
       </div>
     </header>
 
@@ -59,6 +60,66 @@
         </table>
       </section>
       <p id="row-count" class="row-count visually-hidden" aria-live="polite"></p>
+
+    <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" id="settings-form">
+        <h2 id="settings-title">Where the catalog comes from</h2>
+        <p class="settings-intro">
+          Leave this empty to keep using the local <code>launcher.yaml</code>. Fill it
+          in to read the catalog from a Git repository instead, so a change is made
+          once centrally rather than on every machine.
+        </p>
+
+        <div id="settings-env-note" class="settings-note" hidden></div>
+        <div id="settings-storage-note" class="settings-note" hidden></div>
+
+        <label class="settings-field">
+          <span>Repository URL</span>
+          <input id="settings-url" type="url" spellcheck="false"
+                 placeholder="https://gitlab.example.org/group/config.git">
+        </label>
+
+        <label class="settings-field">
+          <span>Username</span>
+          <input id="settings-username" type="text" spellcheck="false" placeholder="oauth2">
+          <small>GitLab needs one. A deploy token supplies its own; for a personal
+                 access token any name works and <code>oauth2</code> is conventional.</small>
+        </label>
+
+        <label class="settings-field">
+          <span>Token</span>
+          <input id="settings-token" type="password" spellcheck="false" autocomplete="off">
+          <small id="settings-token-hint">Stored encrypted by the operating system. Never shown again.</small>
+        </label>
+
+        <details class="settings-more">
+          <summary>More</summary>
+          <label class="settings-field">
+            <span>Folder inside the repository</span>
+            <input id="settings-subpath" type="text" spellcheck="false" placeholder="launcher">
+          </label>
+          <label class="settings-field">
+            <span>Branch</span>
+            <input id="settings-ref" type="text" spellcheck="false" placeholder="the repository default">
+          </label>
+          <label class="settings-field">
+            <span>Use a different machine name</span>
+            <input id="settings-hostname" type="text" spellcheck="false">
+            <small id="settings-hostname-hint"></small>
+          </label>
+        </details>
+
+        <p id="settings-result" class="settings-result" role="status" hidden></p>
+
+        <div class="settings-buttons">
+          <button id="settings-test" type="button">Test connection</button>
+          <button id="settings-clear" type="button">Stop using a repository</button>
+          <span class="settings-spacer"></span>
+          <button id="settings-cancel" type="button">Cancel</button>
+          <button id="settings-save" type="button" class="primary">Save</button>
+        </div>
+      </form>
+    </dialog>
     </main>
     <script type="module" src="./app.ts"></script>
   </body>

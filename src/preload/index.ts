@@ -14,6 +14,11 @@ const api: LauncherApi = {
   getFieldReport: () => ipcRenderer.invoke(IPC.getFieldReport),
   getConfigLocation: () => ipcRenderer.invoke(IPC.getConfigLocation),
   revealConfig: () => ipcRenderer.invoke(IPC.revealConfig),
+  getRepoSettings: () => ipcRenderer.invoke(IPC.getRepoSettings),
+  saveRepoSettings: (settings) => ipcRenderer.invoke(IPC.saveRepoSettings, settings),
+  clearRepoSettings: () => ipcRenderer.invoke(IPC.clearRepoSettings),
+  testRepoSettings: (settings) => ipcRenderer.invoke(IPC.testRepoSettings, settings),
+  restartApp: () => ipcRenderer.invoke(IPC.restartApp),
 };
 
 contextBridge.exposeInMainWorld("launcherApi", api);

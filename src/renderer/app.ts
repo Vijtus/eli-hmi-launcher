@@ -9,6 +9,7 @@ import type {
   LauncherRow,
   RuntimeItemState,
   RuntimeSnapshot,
+  RepoSettingsInput,
 } from "../shared/types";
 
 type AppState = {
@@ -261,3 +262,130 @@ async function initialize(): Promise<void> {
 }
 
 void initialize();
+
+// ---------------------------------------------------------------------------
+// Configuration screen.
+//
+// Setting six environment variables is a fine thing to ask of a deployment
+// script and a poor thing to ask of an operator at a workstation. This is the
+// same settings by another route; the environment still wins, and the screen
+// says so when it does.
+// ---------------------------------------------------------------------------
+
+const settingsDialog = document.getElementById("settings-dialog") as HTMLDialogElement | null;
+
+if (settingsDialog) {
+  const field = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
+  const openButton = document.getElementById("open-settings") as HTMLButtonElement;
+  const urlField = field("settings-url");
+  const usernameField = field("settings-username");
+  const tokenField = field("settings-token");
+  const subpathField = field("settings-subpath");
+  const refField = field("settings-ref");
+  const hostnameField = field("settings-hostname");
+  const tokenHint = document.getElementById("settings-token-hint") as HTMLElement;
+  const hostnameHint = document.getElementById("settings-hostname-hint") as HTMLElement;
+  const envNote = document.getElementById("settings-env-note") as HTMLElement;
+  const storageNote = document.getElementById("settings-storage-note") as HTMLElement;
+  const result = document.getElementById("settings-result") as HTMLElement;
+  const testButton = document.getElementById("settings-test") as HTMLButtonElement;
+  const clearButton = document.getElementById("settings-clear") as HTMLButtonElement;
+  const cancelButton = document.getElementById("settings-cancel") as HTMLButtonElement;
+  const saveButton = document.getElementById("settings-save") as HTMLButtonElement;
+
+  function say(message: string, tone: "ok" | "bad" | "busy"): void {
+    result.textContent = message;
+    result.dataset["tone"] = tone;
+    result.hidden = false;
+  }
+
+  function collect(): RepoSettingsInput {
+    return {
+      url: urlField.value,
+      username: usernameField.value,
+      token: tokenField.value,
+      ref: refField.value,
+      subpath: subpathField.value,
+      hostname: hostnameField.value,
+    };
+  }
+
+  async function fill(): Promise<void> {
+    const view = await window.launcherApi.getRepoSettings();
+    urlField.value = view.url;
+    usernameField.value = view.username;
+    subpathField.value = view.subpath;
+    refField.value = view.ref;
+    hostnameField.value = view.hostname;
+    tokenField.value = "";
+
+    tokenField.placeholder = view.tokenStored ? "stored — leave empty to keep it" : "";
+    tokenHint.textContent = view.secureStorageAvailable
+      ? "Stored encrypted by the operating system. Never shown again."
+      : "This system offers no secure storage, so a token cannot be saved here.";
+
+    hostnameHint.textContent =
+      `This machine is “${view.machineName}”. The repository must hold a host file of that ` +
+      "name; enter another machine's name to borrow its file.";
+
+    storageNote.hidden = view.secureStorageAvailable;
+    storageNote.textContent = view.secureStorageAvailable
+      ? ""
+      : "No secure storage on this system. Everything except the token can be saved here; " +
+        "the token has to come from the environment.";
+
+    envNote.hidden = view.overriddenByEnv.length === 0;
+    envNote.textContent =
+      view.overriddenByEnv.length === 0
+        ? ""
+        : `Set in the environment and therefore in charge: ${view.overriddenByEnv.join(", ")}. ` +
+          "Values saved here are kept but do not take effect until those are removed.";
+
+    result.hidden = true;
+  }
+
+  openButton?.addEventListener("click", () => {
+    void fill().then(() => settingsDialog.showModal());
+  });
+
+  cancelButton.addEventListener("click", () => settingsDialog.close());
+
+  testButton.addEventListener("click", () => {
+    say("Connecting…", "busy");
+    testButton.disabled = true;
+    void window.launcherApi
+      .testRepoSettings(collect())
+      .then((outcome) => say(outcome.message, outcome.ok ? "ok" : "bad"))
+      .catch((error: unknown) => say(String(error), "bad"))
+      .finally(() => {
+        testButton.disabled = false;
+      });
+  });
+
+  saveButton.addEventListener("click", () => {
+    void window.launcherApi
+      .saveRepoSettings(collect())
+      .then(async (outcome) => {
+        say(
+          outcome.message ?? "Saved. The launcher has to restart to read the catalog again.",
+          outcome.message ? "bad" : "ok",
+        );
+        tokenField.value = "";
+        await fill();
+        if (!outcome.message) {
+          await window.launcherApi.restartApp();
+        }
+      })
+      .catch((error: unknown) => say(String(error), "bad"));
+  });
+
+  clearButton.addEventListener("click", () => {
+    void window.launcherApi
+      .clearRepoSettings()
+      .then(async () => {
+        await fill();
+        say("Cleared. The launcher will use the local launcher.yaml after a restart.", "ok");
+      })
+      .catch((error: unknown) => say(String(error), "bad"));
+  });
+}

@@ -5,6 +5,8 @@ import YAML from "yaml";
 import { redactError } from "../catalog/auth";
 import { defaultDeps } from "../catalog/repo";
 import { readDynamicConfigEnv, resolveDynamicConfig, type DynamicConfigResult } from "../catalog/load";
+import { environmentWithSettings, loadSettings } from "../catalog/settings";
+import { electronSecretStore } from "../catalog/secret-store";
 import { logEvent } from "../diagnostics/log";
 import { loadConfigFromFile, type ParsedConfig } from "./load";
 import { buildConfigCandidates, resolveAppRoot, type AppLocation } from "./paths";
@@ -74,7 +76,15 @@ async function configDeclaresEntries(configPath: string): Promise<boolean> {
 
 async function resolveGitConfig(localOwnsCatalog: boolean): Promise<DynamicConfigResult | undefined> {
   const bundled = await bundledConfigRepoDir();
-  const options = readDynamicConfigEnv(process.env, {
+  // Settings entered in the launcher fill in underneath the real environment, so
+  // an operator can configure this without a terminal while a machine set up by
+  // a deployment script keeps behaving exactly as before. The environment wins;
+  // see catalog/settings.ts.
+  const env = environmentWithSettings(
+    process.env,
+    loadSettings(app.getPath("userData"), electronSecretStore()),
+  );
+  const options = readDynamicConfigEnv(env, {
     cacheDir: path.join(app.getPath("userData"), "config-repo"),
     ...(bundled ? { localDir: bundled } : {}),
   });
@@ -83,8 +93,8 @@ async function resolveGitConfig(localOwnsCatalog: boolean): Promise<DynamicConfi
   }
 
   const bundledOnly =
-    !process.env["ELI_LAUNCHER_CONFIG_REPO_URL"] &&
-    !process.env["ELI_LAUNCHER_CONFIG_REPO_DIR"] &&
+    !env["ELI_LAUNCHER_CONFIG_REPO_URL"] &&
+    !env["ELI_LAUNCHER_CONFIG_REPO_DIR"] &&
     Boolean(bundled);
   if (bundledOnly && localOwnsCatalog) {
     logEvent("info", "Local config defines entries; bundled catalog not applied");

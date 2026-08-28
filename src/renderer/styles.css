@@ -378,3 +378,182 @@ tbody tr:hover .launch-button {
     width: 20%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Configuration screen.
+
+   The palette is two colours, so state is carried by border weight and
+   inversion rather than by hue. A failed test is a heavy border and a "—"
+   prefix, not red text; this stays legible to anyone who cannot separate red
+   from green, which in a control room is worth more than decoration.
+   --------------------------------------------------------------------------- */
+
+.settings-button {
+  margin-left: 0.5rem;
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-button:hover,
+.settings-button:focus-visible {
+  background: #ffffff;
+  color: #000000;
+}
+
+.settings-dialog {
+  background: #000000;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  padding: 0;
+  max-width: 40rem;
+  width: calc(100vw - 4rem);
+}
+
+.settings-dialog::backdrop {
+  background: #000000;
+  opacity: 0.85;
+}
+
+.settings-dialog form {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.settings-dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-intro {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.settings-note {
+  border: 1px solid #ffffff;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.settings-field {
+  display: block;
+  margin-bottom: 0.9rem;
+}
+
+.settings-field > span {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.settings-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+}
+
+.settings-field input::placeholder {
+  color: #ffffff;
+  opacity: 0.55;
+}
+
+.settings-field small {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+.settings-more {
+  margin: 0 0 1rem;
+  border-top: 1px solid #ffffff;
+  padding-top: 0.75rem;
+}
+
+.settings-more summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
+
+.settings-result {
+  border: 1px solid #ffffff;
+  padding: 0.6rem 0.75rem;
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* Inverted, so a failure is unmistakable without colour. */
+.settings-result[data-tone="bad"] {
+  border-width: 2px;
+  background: #ffffff;
+  color: #000000;
+  font-weight: 600;
+}
+
+.settings-result[data-tone="busy"] {
+  border-style: dashed;
+}
+
+.settings-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  border-top: 1px solid #ffffff;
+  padding-top: 0.9rem;
+}
+
+.settings-spacer {
+  flex: 1 1 auto;
+}
+
+.settings-buttons button {
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  padding: 0.4rem 0.85rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-buttons button:hover:not(:disabled),
+.settings-buttons button:focus-visible {
+  background: #ffffff;
+  color: #000000;
+}
+
+.settings-buttons button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-buttons .primary {
+  background: #ffffff;
+  color: #000000;
+  font-weight: 600;
+}
+
+.settings-buttons .primary:hover,
+.settings-buttons .primary:focus-visible {
+  background: #000000;
+  color: #ffffff;
+}

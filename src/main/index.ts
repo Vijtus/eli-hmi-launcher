@@ -7,6 +7,14 @@ import { loadApplicationConfig, resolveApplicationConfigPath } from "./config/ap
 import type { ParsedConfig } from "./config/load";
 import { createDiagnosticsSession } from "./diagnostics/session";
 import { getLogFilePath, initLogger, logEvent } from "./diagnostics/log";
+import { electronSecretStore } from "./catalog/secret-store";
+import {
+  clearSettingsFor,
+  readSettingsView,
+  saveSettingsFrom,
+  testSettings,
+  type SettingsServiceDeps,
+} from "./catalog/settings-service";
 import { registerIpc } from "./ipc";
 import { createLauncher } from "./launch";
 import { PhoebusServerManager } from "./launch/phoebus-server";
@@ -154,6 +162,17 @@ const launcher = createLauncher({
   recordLaunch: diagnostics.recordLaunch,
 });
 
+// Everything the settings screen needs, gathered once. `env` is process.env so
+// the screen can report which fields the environment is overriding.
+function settingsDeps(): SettingsServiceDeps {
+  return {
+    userDataDir: app.getPath("userData"),
+    secrets: electronSecretStore(),
+    env: process.env,
+    hostname: () => os.hostname(),
+  };
+}
+
 function installIpc(): void {
   registerIpc({
     getConfig: publicConfig,
@@ -161,6 +180,17 @@ function installIpc(): void {
     launch: launcher,
     getFieldReport: diagnostics.info,
     getConfigLocation: () => configLocation,
+    getRepoSettings: () => readSettingsView(settingsDeps()),
+    saveRepoSettings: (settings) => saveSettingsFrom(settingsDeps(), settings),
+    clearRepoSettings: () => clearSettingsFor(settingsDeps()),
+    testRepoSettings: (settings) => testSettings(settingsDeps(), settings),
+    // Settings only take effect at startup, because that is when the catalog is
+    // resolved. Restarting is honest about that rather than pretending a live
+    // reload happened.
+    restartApp: () => {
+      app.relaunch();
+      app.exit(0);
+    },
   });
 }
 
