@@ -163,6 +163,19 @@ function renderRows(): void {
   } else {
     for (const item of rows) {
       const row = document.createElement("tr");
+      // The whole row launches, not just the name. Aiming at one cell of a
+      // full-width row is needless precision for an operator who has already
+      // decided which line they want.
+      //
+      // The name cell holds a real button so the row stays reachable by keyboard
+      // and announces itself to a screen reader; this handler ignores clicks that
+      // originated there, or the launch would fire twice.
+      row.addEventListener("click", (event) => {
+        if ((event.target as HTMLElement | null)?.closest(".launch-button")) {
+          return;
+        }
+        void launchItem(item.id, item.name);
+      });
       appendLaunchCell(row, item);
       appendCell(row, displayList(item.technology));
       appendCell(row, displayList(item.section));

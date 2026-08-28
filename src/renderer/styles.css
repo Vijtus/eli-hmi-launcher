@@ -279,14 +279,14 @@ main {
   overflow: auto;
 }
 
+/* No frame. The only rule that earns its place is the one separating the toolbar
+   from the data, and .app-header already draws it. Boxing the table in on three
+   more sides added lines that mark nothing. */
 table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
   background: #000000;
-  border-right: 1px solid #ffffff;
-  border-bottom: 1px solid #ffffff;
-  border-left: 1px solid #ffffff;
 }
 
 /* Rows are white with black text. The window frame is black, so the data is the
@@ -333,15 +333,23 @@ td:last-child {
 
 /* Hovering inverts the row to black. With two colours there is no halfway
    shade, and against white rows the inversion is unmistakable at a glance from
-   across a control room. */
+   across a control room.
+   The cell separators invert with it: black rules vanish into a black row, so
+   they switch to white and the columns stay legible while the row is lit. */
 tbody tr:hover td {
   background: #000000;
   color: #ffffff;
+  border-color: #ffffff;
 }
 
 tbody tr:hover .launch-button {
   background: #000000;
   color: #ffffff;
+}
+
+/* The whole row is the control, so the whole row shows it. */
+tbody tr {
+  cursor: pointer;
 }
 
 .name-cell {
@@ -560,10 +568,12 @@ tbody tr:hover .launch-button:focus-visible {
   flex: 1 1 auto;
 }
 
+/* Every button in the application is white with black text. A dialog whose
+   buttons are the inverse of the toolbar's reads as a different program. */
 .settings-buttons button {
-  background: #000000;
-  color: #ffffff;
-  border: 1px solid #ffffff;
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
   padding: 0.4rem 0.85rem;
   font: inherit;
   cursor: pointer;
@@ -571,8 +581,8 @@ tbody tr:hover .launch-button:focus-visible {
 
 .settings-buttons button:hover:not(:disabled),
 .settings-buttons button:focus-visible {
-  background: #ffffff;
-  color: #000000;
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 .settings-buttons button:disabled {
@@ -580,16 +590,11 @@ tbody tr:hover .launch-button:focus-visible {
   cursor: default;
 }
 
+/* The default action is marked by weight and a heavier edge, not by inverting
+   it -- inverting would make it the one dark button in a row of light ones. */
 .settings-buttons .primary {
-  background: #ffffff;
-  color: #000000;
-  font-weight: 600;
-}
-
-.settings-buttons .primary:hover,
-.settings-buttons .primary:focus-visible {
-  background: #000000;
-  color: #ffffff;
+  font-weight: 700;
+  border-width: 2px;
 }
 
 
