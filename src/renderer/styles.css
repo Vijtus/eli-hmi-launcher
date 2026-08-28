@@ -289,13 +289,22 @@ table {
   border-left: 1px solid #ffffff;
 }
 
+/* Rows are white with black text. The window frame is black, so the data is the
+   lit surface and the chrome around it recedes -- which is the whole point of
+   the layout, and the opposite of a black table that disappears into the
+   background. */
 th,
 td {
   padding: 0.62rem 0.7rem;
-  border-top: 1px solid #ffffff;
-  border-right: 1px solid #ffffff;
+  border-top: 1px solid #000000;
+  border-right: 1px solid #000000;
   vertical-align: middle;
   overflow-wrap: anywhere;
+}
+
+tbody td {
+  background: #ffffff;
+  color: #000000;
 }
 
 th:last-child,
@@ -322,19 +331,17 @@ td:last-child {
   padding-bottom: 0.55rem;
 }
 
-/* Hovering a row marks it without repainting it. Inverting the whole row moved
-   every word on the line and made the table flicker as the pointer crossed it;
-   an inset outline points at the row and leaves the text where it was. */
+/* Hovering inverts the row to black. With two colours there is no halfway
+   shade, and against white rows the inversion is unmistakable at a glance from
+   across a control room. */
 tbody tr:hover td {
-  outline: 1px solid #ffffff;
-  outline-offset: -1px;
+  background: #000000;
+  color: #ffffff;
 }
 
-/* The name is the control. Inverting only that cell shows what will launch
-   without turning the row into a white slab. */
 tbody tr:hover .launch-button {
-  background: #ffffff;
-  color: #000000;
+  background: #000000;
+  color: #ffffff;
 }
 
 .name-cell {
@@ -346,16 +353,19 @@ tbody tr:hover .launch-button {
   min-height: 2.9rem;
   padding: 0.62rem 0.7rem;
   border: 0;
-  background: #000000;
-  color: #ffffff;
+  background: #ffffff;
+  color: #000000;
   font-weight: 700;
   text-align: left;
 }
 
-.launch-button:hover,
 .launch-button:focus-visible {
-  outline: 2px solid #ffffff;
+  outline: 2px solid #000000;
   outline-offset: -3px;
+}
+
+tbody tr:hover .launch-button:focus-visible {
+  outline-color: #ffffff;
 }
 
 .runtime-state-cell {
