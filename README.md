@@ -22,6 +22,8 @@ The builds are unsigned: Windows shows SmartScreen (More info → Run anyway) an
 
 Last verified on `TESTZ-OPR04` on 2026-08-27, 15 of 15 entries launching; the reports are under [deployment/TESTZ/field-reports/](deployment/TESTZ/field-reports).
 
+The full operator procedure — installing, where the configuration lives, editing the catalog, and reading a diagnostic report — is [deployment/TESTZ/OPERATING.md](deployment/TESTZ/OPERATING.md).
+
 ## Platforms
 
 The application is built and tested on Windows, macOS, and Linux. Packaging targets include Windows NSIS/portable/zip, macOS dmg/zip, and Linux AppImage/deb/rpm/tar.gz. Platform-specific process behavior is covered by the cross-platform CI matrix.
