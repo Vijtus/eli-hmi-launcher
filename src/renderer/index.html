@@ -28,7 +28,6 @@
           </label>
         </section>
         <nav id="quick-actions" class="quick-actions" aria-label="Launcher actions"></nav>
-        <button id="open-settings" class="settings-button" type="button" title="Where the catalog comes from">Configuration…</button>
       </div>
     </header>
 
@@ -40,16 +39,16 @@
         <button id="status-dismiss" class="dismiss" type="button" aria-label="Dismiss message">×</button>
       </div>
 
-      <section class="table-panel" aria-label="Configured GUIs" data-runtime-state-column="active">
+      <section class="table-panel" aria-label="Configured GUIs">
         <table>
           <colgroup>
             <col class="column-name" /><col class="column-technology" /><col class="column-section" />
-            <col class="column-platform" /><col class="column-rmc" /><col class="column-runtime-state" /><col class="column-note" />
+            <col class="column-platform" /><col class="column-rmc" /><col class="column-note" />
           </colgroup>
           <thead>
             <tr>
               <th scope="col">Name</th><th scope="col">Technology</th><th scope="col">Section</th>
-              <th scope="col">Platform</th><th scope="col">RMC</th><th scope="col">State</th><th scope="col">Note</th>
+              <th scope="col">Platform</th><th scope="col">RMC</th><th scope="col">Note</th>
             </tr>
           </thead>
           <tbody id="launcher-rows"></tbody>
@@ -59,6 +58,7 @@
       <footer class="app-footer">
         <span id="config-location-text" class="config-path"></span>
         <button id="config-location-open" type="button">Open folder</button>
+        <button id="open-settings" type="button" title="Where the catalog comes from">Configuration…</button>
       </footer>
 
     <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">

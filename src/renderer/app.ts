@@ -124,26 +124,6 @@ function appendLaunchCell(row: HTMLTableRowElement, item: LauncherRow): void {
   row.appendChild(cell);
 }
 
-function runtimeLabel(runtime: RuntimeItemState | undefined): string {
-  if (!runtime) return "--";
-  if (runtime.stale) return "STALE";
-  if (runtime.status === "running") return runtime.runningInstances > 1 ? `RUNNING ${runtime.runningInstances}` : "RUNNING";
-  if (runtime.status === "shared") return "SHARED";
-  if (runtime.status === "handed-off") return "HANDOFF";
-  if (runtime.status === "stopped") return "STOPPED";
-  return "UNKNOWN";
-}
-
-function appendRuntimeCell(row: HTMLTableRowElement, runtime: RuntimeItemState | undefined): void {
-  const cell = document.createElement("td");
-  cell.className = "runtime-state-cell";
-  cell.textContent = runtimeLabel(runtime);
-  cell.dataset.runtimeStatus = runtime?.stale ? "stale" : (runtime?.status ?? "unobserved");
-  cell.title = runtime?.detail ?? "No launch has been observed in this launcher session.";
-  cell.setAttribute("aria-label", runtime ? `Runtime state: ${cell.textContent}. ${runtime.detail}` : "Runtime state: no launch observed.");
-  row.appendChild(cell);
-}
-
 function renderRows(): void {
   const rows = filterLauncherRows(state.rows, {
     search: state.search,
@@ -155,7 +135,7 @@ function renderRows(): void {
   if (rows.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 7;
+    cell.colSpan = 6;
     cell.className = "empty-row";
     cell.textContent = "No GUIs match the current filters.";
     row.appendChild(cell);
@@ -181,7 +161,6 @@ function renderRows(): void {
       appendCell(row, displayList(item.section));
       appendCell(row, item.platform);
       appendCell(row, item.rmc);
-      appendRuntimeCell(row, state.runtimeById.get(item.id));
       appendCell(row, item.note);
       rowsElement.appendChild(row);
     }

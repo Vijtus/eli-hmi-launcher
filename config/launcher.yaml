@@ -30,9 +30,29 @@ entries:
       kind: web
       url: https://www.eli-beams.eu/
 
+# The toolbar's fixed buttons. A deployment replaces these with whatever its
+# operators reach for constantly - at L4 that is Data Browser and Alarm System.
 quickActions:
+  - id: data-browser
+    label: Data Browser
+    target:
+      kind: web
+      url: https://control-system-studio.readthedocs.io/en/latest/app/databrowser/doc/index.html
+  - id: alarm-system
+    label: Alarm System
+    target:
+      kind: web
+      url: https://control-system-studio.readthedocs.io/en/latest/app/alarm/ui/doc/index.html
+
+# Everything else, behind one button, so the toolbar does not grow without limit.
+moreActions:
   - id: examples-folder
     label: Examples folder
     target:
       kind: folder
       path: ${APP_ROOT}/examples
+  - id: eli-beamlines
+    label: ELI Beamlines site
+    target:
+      kind: web
+      url: https://www.eli-beams.eu/
