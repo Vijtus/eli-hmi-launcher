@@ -43,7 +43,7 @@ const rowsElement = document.getElementById("launcher-rows") as HTMLTableSection
 const rowCountElement = document.getElementById("row-count") as HTMLParagraphElement;
 const catalogStalenessElement = document.getElementById("catalog-staleness") as HTMLParagraphElement;
 const fieldReportElement = document.getElementById("field-report-banner") as HTMLParagraphElement;
-const configLocationElement = document.getElementById("config-location") as HTMLParagraphElement;
+const configLocationElement = document.querySelector(".app-footer") as HTMLElement;
 const configLocationText = document.getElementById("config-location-text") as HTMLSpanElement;
 const configLocationOpen = document.getElementById("config-location-open") as HTMLButtonElement;
 const appTitle = document.getElementById("app-title") as HTMLElement;
@@ -179,7 +179,7 @@ function renderRows(): void {
 
 function setSelectOptions(select: HTMLSelectElement, values: string[]): void {
   const current = select.value;
-  select.replaceChildren(new Option("All", ""), ...values.map((value) => new Option(value, value)));
+  select.replaceChildren(new Option("Select", ""), ...values.map((value) => new Option(value, value)));
   select.value = values.includes(current) ? current : "";
 }
 

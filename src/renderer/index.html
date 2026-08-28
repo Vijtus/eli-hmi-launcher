@@ -16,15 +16,15 @@
         <section class="filters" aria-label="GUI filters">
           <label class="search-field">
             <span class="visually-hidden">Search</span>
-            <input id="search-input" type="search" placeholder="Search Name &amp; Note" autocomplete="off" />
+            <input id="search-input" type="search" placeholder="Search in Name &amp; Note..." autocomplete="off" />
           </label>
           <label class="filter-field">
             <span>Technology</span>
-            <select id="technology-filter"><option value="">All</option></select>
+            <select id="technology-filter"><option value="">Select</option></select>
           </label>
           <label class="filter-field">
             <span>Section</span>
-            <select id="section-filter"><option value="">All</option></select>
+            <select id="section-filter"><option value="">Select</option></select>
           </label>
         </section>
         <nav id="quick-actions" class="quick-actions" aria-label="Launcher actions"></nav>
@@ -33,10 +33,6 @@
     </header>
 
     <main>
-      <p id="config-location" class="config-location" role="status" hidden>
-        <span id="config-location-text"></span>
-        <button id="config-location-open" type="button">Open folder</button>
-      </p>
       <p id="field-report-banner" class="field-report-banner" role="status" hidden></p>
       <p id="catalog-staleness" class="catalog-staleness" role="status" hidden></p>
       <div id="status-banner" class="status-banner" role="alert" hidden>
@@ -60,6 +56,10 @@
         </table>
       </section>
       <p id="row-count" class="row-count visually-hidden" aria-live="polite"></p>
+      <footer class="app-footer">
+        <span id="config-location-text" class="config-path"></span>
+        <button id="config-location-open" type="button">Open folder</button>
+      </footer>
 
     <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
       <form method="dialog" id="settings-form">

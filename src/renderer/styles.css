@@ -1,6 +1,9 @@
 :root {
   color-scheme: dark;
-  font-family: "Arial Narrow", "Roboto Condensed", "Segoe UI", Arial, sans-serif;
+  /* Normal width, not condensed. A condensed face squeezes device names and RMC
+     identifiers into something that has to be read twice, which is the opposite
+     of what a launcher is for. */
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background: #000000;
   color: #ffffff;
   --runtime-state-column-width: 8rem;
@@ -149,13 +152,15 @@ h1 {
   width: 100%;
 }
 
+/* Sentence case and normal weight: these are labels above a control, not
+   headings competing with the launcher title. */
 .filter-field {
   display: grid;
-  gap: 0.2rem;
-  min-width: 10rem;
-  font-size: 0.82rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  gap: 0.25rem;
+  min-width: 11rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  text-transform: none;
 }
 
 .filter-field select {
@@ -228,6 +233,7 @@ main {
   font-size: 0.86rem;
 }
 
+/* Superseded by .app-footer; kept so any stale rule referring to it is inert. */
 .config-location {
   display: flex;
   align-items: center;
@@ -293,27 +299,38 @@ td:last-child {
   border-right: 0;
 }
 
+/* The header labels the columns; it is not a band of contrast competing with the
+   rows for attention. Black on white, sentence case, separated by a rule. */
 .table-panel thead th {
   position: sticky;
   z-index: 10;
   top: 0;
-  background: #ffffff;
-  color: #000000;
-  text-align: left;
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-tbody tr:hover td {
-  background: #ffffff;
-  color: #000000;
-}
-
-tbody tr:hover .launch-button {
-  border-color: #000000;
   background: #000000;
   color: #ffffff;
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 1px solid #ffffff;
+  padding-bottom: 0.55rem;
+}
+
+/* Hovering a row marks it without repainting it. Inverting the whole row moved
+   every word on the line and made the table flicker as the pointer crossed it;
+   an inset outline points at the row and leaves the text where it was. */
+tbody tr:hover td {
+  outline: 1px solid #ffffff;
+  outline-offset: -1px;
+}
+
+/* The name is the control. Inverting only that cell shows what will launch
+   without turning the row into a white slab. */
+tbody tr:hover .launch-button {
+  background: #ffffff;
+  color: #000000;
 }
 
 .name-cell {
@@ -556,4 +573,38 @@ tbody tr:hover .launch-button {
 .settings-buttons .primary:focus-visible {
   background: #000000;
   color: #ffffff;
+}
+
+
+/* ---------------------------------------------------------------------------
+   Footer.
+
+   Where the configuration came from belongs on screen -- an operator editing
+   the wrong file loses an afternoon -- but it is reference material, not the
+   point of the window. It sits under the table, out of the reading path, and
+   still says plainly when the file is one an upgrade will overwrite.
+   --------------------------------------------------------------------------- */
+
+.app-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.1rem 0;
+  font-size: 0.82rem;
+}
+
+.config-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+.app-footer button {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.82rem;
 }
