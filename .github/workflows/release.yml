@@ -62,6 +62,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # launcher.yaml is a repository file, not a build output, so the release
+      # job needs the tree. This has to come before download-artifact: checkout
+      # cleans the workspace and would delete the downloaded artifacts.
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -74,6 +79,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          SITE_CONFIG: deployment/TESTZ/launcher.yaml
           UNSIGNED_NOTE: >-
             These installers are **unsigned**. See docs/troubleshooting.md for Windows SmartScreen and macOS Gatekeeper notes.
         run: |
@@ -82,4 +88,6 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --generate-notes --notes "$UNSIGNED_NOTE"
           fi
-          gh release upload "$TAG" artifacts/* --clobber
+          # deployment/TESTZ/OPERATING.md tells the operator to copy launcher.yaml
+          # from the release, so it ships as an asset rather than by hand.
+          gh release upload "$TAG" artifacts/* "$SITE_CONFIG" --clobber
