@@ -37,4 +37,17 @@ export function registerIpc(deps: IpcDependencies): void {
       shell.showItemInFolder(location.path);
     }
   });
+  ipcMain.handle(IPC.getRepoSettings, async (): Promise<RepoSettingsView> => deps.getRepoSettings());
+  ipcMain.handle(
+    IPC.saveRepoSettings,
+    async (_event, settings: RepoSettingsInput): Promise<RepoSettingsSaveResult> =>
+      deps.saveRepoSettings(settings),
+  );
+  ipcMain.handle(IPC.clearRepoSettings, async (): Promise<void> => deps.clearRepoSettings());
+  ipcMain.handle(
+    IPC.testRepoSettings,
+    async (_event, settings: RepoSettingsInput): Promise<RepoSettingsTestResult> =>
+      deps.testRepoSettings(settings),
+  );
+  ipcMain.handle(IPC.restartApp, async (): Promise<void> => deps.restartApp());
 }
