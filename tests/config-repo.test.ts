@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   ensureConfigRepo,
+  isCertificateError,
   isNetworkError,
   readState,
   worktreeDir,
@@ -413,4 +414,57 @@ test("network errors are classified by name, code, and message", () => {
   assert.equal(isNetworkError(new Error("socket hang up")), true);
   assert.equal(isNetworkError(Object.assign(new Error("nope"), { name: "NotFoundError" })), false);
   assert.equal(isNetworkError(undefined), false);
+});
+
+// Reported from a control-room workstation against an internal GitLab: the clone
+// failed with "self signed certificate in certificate chain" and the launcher
+// told the operator to check the URL, the ref and the access token. All three
+// were correct, and none of them could have fixed it.
+test("a certificate failure is not mistaken for a network or credentials fault", () => {
+  const reported = new Error("self signed certificate in certificate chain");
+  assert.equal(isCertificateError(reported), true);
+  assert.equal(isNetworkError(reported), false);
+
+  assert.equal(
+    isCertificateError(Object.assign(new Error("x"), { code: "SELF_SIGNED_CERT_IN_CHAIN" })),
+    true,
+  );
+  assert.equal(
+    isCertificateError(Object.assign(new Error("x"), { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" })),
+    true,
+  );
+  // isomorphic-git wraps the underlying failure rather than rethrowing it.
+  assert.equal(
+    isCertificateError(
+      Object.assign(new Error("clone failed"), {
+        cause: Object.assign(new Error("inner"), { code: "DEPTH_ZERO_SELF_SIGNED_CERT" }),
+      }),
+    ),
+    true,
+  );
+  assert.equal(isCertificateError(new Error("connect ECONNREFUSED 10.2.5.12:443")), false);
+  assert.equal(isCertificateError(new Error("401 Unauthorized")), false);
+  assert.equal(isCertificateError(undefined), false);
+});
+
+test("a certificate failure names the setting that actually fixes it", async () => {
+  const cacheDir = mkdtempSync(path.join(os.tmpdir(), "eli-config-repo-cert-"));
+  try {
+    const untrusted = fakeGit({
+      onClone: () => {
+        throw new Error("self signed certificate in certificate chain");
+      },
+    });
+    await assert.rejects(
+      ensureConfigRepo({ url: "https://git.example.org/c.git", cacheDir, retries: 0 }, deps(untrusted.git)),
+      (error: Error) => {
+        assert.match(error.message, /NODE_EXTRA_CA_CERTS/);
+        assert.match(error.message, /trust problem rather than a wrong URL or a bad token/);
+        assert.doesNotMatch(error.message, /Remedy: check ELI_LAUNCHER_CONFIG_REPO_URL/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(cacheDir, { recursive: true, force: true });
+  }
 });

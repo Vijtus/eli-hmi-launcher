@@ -167,6 +167,52 @@ const NETWORK_ERROR_CODES = new Set([
   "ERR_SOCKET_CONNECTION_TIMEOUT",
 ]);
 
+// A TLS trust failure is neither a network fault nor a credentials fault: the
+// host was reached and answered, and the token was never even offered. It means
+// Node does not trust the certificate chain — which at a site with an internal
+// CA is the normal first-run state, because Node carries its own root list and
+// does not read the operating system's certificate store that the browser uses.
+//
+// Classified separately so the remedy can name the thing that actually fixes it.
+// Reporting "check the URL, the ref, and the access token" for this sends an
+// operator to inspect three settings that are all already correct.
+const CERTIFICATE_ERROR_CODES = new Set([
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "CERT_UNTRUSTED",
+  "CERT_HAS_EXPIRED",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+export function isCertificateError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const candidate = error as {
+    code?: string;
+    message?: string;
+    cause?: unknown;
+    data?: { code?: string };
+  };
+  if (candidate.code && CERTIFICATE_ERROR_CODES.has(candidate.code)) {
+    return true;
+  }
+  if (candidate.data?.code && CERTIFICATE_ERROR_CODES.has(candidate.data.code)) {
+    return true;
+  }
+  // isomorphic-git wraps the underlying failure, so the TLS code is often only
+  // reachable through `cause` rather than on the error that surfaces here.
+  if (candidate.cause && candidate.cause !== error && isCertificateError(candidate.cause)) {
+    return true;
+  }
+  return /self[- ]signed certificate|unable to verify the first certificate|unable to get local issuer|certificate has expired|altname|CERT_/i.test(
+    candidate.message ?? "",
+  );
+}
+
 export function isNetworkError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -434,9 +480,24 @@ export async function ensureConfigRepo(
     if (isNetworkError(error)) {
       return useCache(redactError(error, options.token, options.username));
     }
+    const where = `Config repo '${redactSecret(options.url, options.token, options.username)}' could not be cloned into '${dir}'. `;
+    const cause = `Cause: ${redactError(error, options.token, options.username)}. `;
+    if (isCertificateError(error)) {
+      throw new Error(
+        where +
+          cause +
+          "The server was reached and answered, so this is a trust problem rather than a wrong URL or a bad " +
+          "token. Node carries its own list of certificate authorities and does not read the operating " +
+          "system's store, so a certificate the browser accepts can still be rejected here. " +
+          "Remedy: export the issuing CA to a file and set NODE_EXTRA_CA_CERTS to its path, or set " +
+          "NODE_OPTIONS=--use-system-ca to read the system store instead, then restart the launcher. " +
+          "On Windows open a new terminal first, because setx only affects windows opened afterwards. " +
+          "Do not disable certificate verification to work around this.",
+      );
+    }
     throw new Error(
-      `Config repo '${redactSecret(options.url, options.token, options.username)}' could not be cloned into '${dir}'. ` +
-        `Cause: ${redactError(error, options.token, options.username)}. ` +
+      where +
+        cause +
         `Remedy: check ELI_LAUNCHER_CONFIG_REPO_URL, ELI_LAUNCHER_CONFIG_REPO_REF, and the access token.`,
     );
   }
