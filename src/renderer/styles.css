@@ -221,7 +221,6 @@ main {
   padding: 0 1rem 1rem;
 }
 
-.config-location,
 .field-report-banner,
 .catalog-staleness,
 .status-banner {
@@ -230,19 +229,6 @@ main {
   padding: 0.45rem 0;
   border-bottom: 1px solid #ffffff;
   font-size: 0.86rem;
-}
-
-/* Superseded by .app-footer; kept so any stale rule referring to it is inert. */
-.config-location {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.config-location button {
-  min-height: 1.8rem;
-  padding: 0.15rem 0.55rem;
 }
 
 .field-report-banner,

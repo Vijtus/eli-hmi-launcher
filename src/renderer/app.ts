@@ -7,8 +7,6 @@ import type {
   LauncherAction,
   LauncherConfig,
   LauncherRow,
-  RuntimeItemState,
-  RuntimeSnapshot,
   RepoSettingsInput,
 } from "../shared/types";
 
@@ -19,7 +17,6 @@ type AppState = {
   search: string;
   technology: string;
   section: string;
-  runtimeById: Map<string, RuntimeItemState>;
 };
 
 const state: AppState = {
@@ -29,7 +26,6 @@ const state: AppState = {
   search: "",
   technology: "",
   section: "",
-  runtimeById: new Map(),
 };
 
 const quickActionsElement = document.getElementById("quick-actions") as HTMLElement;
@@ -175,11 +171,6 @@ function setSelectOptions(select: HTMLSelectElement, values: string[]): void {
   select.value = values.includes(current) ? current : "";
 }
 
-function applyRuntimeSnapshot(snapshot: RuntimeSnapshot): void {
-  state.runtimeById = new Map(snapshot.items.map((item) => [item.id, item]));
-  renderRows();
-}
-
 function applyConfig(config: LauncherConfig): void {
   appTitle.textContent = config.productName;
   document.title = config.siteName ? `${config.productName} — ${config.siteName}` : config.productName;
@@ -240,13 +231,10 @@ document.addEventListener("keydown", (event) => {
 
 async function initialize(): Promise<void> {
   try {
-    const [config, runtime] = await Promise.all([
-      window.launcherApi.getConfig(),
-      window.launcherApi.getRuntimeStates(),
-    ]);
-    window.launcherApi.onRuntimeStates(applyRuntimeSnapshot);
-    applyConfig(config);
-    applyRuntimeSnapshot(runtime);
+    // Runtime state is no longer displayed, so the renderer does not subscribe
+    // to it. The main process still observes it and still decides whether a
+    // second instance may start; nothing here needs to know.
+    applyConfig(await window.launcherApi.getConfig());
     await Promise.all([showConfigLocation(), showFieldReportBanner()]);
   } catch (error) {
     setStatus(`Config load failed: ${error instanceof Error ? error.message : String(error)}`, true);

@@ -25,7 +25,7 @@ import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { ENV, type EnvLike } from "./load";
 
-export const SETTINGS_FILE = "config-repo-settings.json";
+const SETTINGS_FILE = "config-repo-settings.json";
 
 // The subset of Electron's safeStorage this module needs, injected so the whole
 // thing is testable without an Electron runtime.
