@@ -19,8 +19,8 @@ else, so it cannot fetch from GitHub itself. The release is therefore staged on
 the USB stick, in one folder, exactly as downloaded:
 
     0 - RELEASE v0.4.0-testz (USE THIS)\
-      ELI.HMI.Launcher-0.4.0-x64-setup.exe
-      ELI.HMI.Launcher-0.4.0-x64-portable.exe
+      ELI-HMI-Launcher-0.4.0-x64-setup.exe
+      ELI-HMI-Launcher-0.4.0-x64-portable.exe
       launcher.yaml
       panels-for-css-gui\TESTZ\        pm.bob, centroids.bob
       SHA256SUMS.txt
@@ -31,7 +31,7 @@ digests GitHub publishes for the release, and `SHA256SUMS.txt` lets you check
 them again after any copy:
 
 ```
-certutil -hashfile "ELI.HMI.Launcher-0.4.0-x64-setup.exe" SHA256
+certutil -hashfile "ELI-HMI-Launcher-0.4.0-x64-setup.exe" SHA256
 ```
 
 The other numbered folders on the stick are the previous working set, kept as a
@@ -56,7 +56,7 @@ Two ways. Pick one.
 
 ### Portable — nothing installed
 
-Copy `ELI.HMI.Launcher-0.4.0-x64-portable.exe` and `launcher.yaml` into the same
+Copy `ELI-HMI-Launcher-0.4.0-x64-portable.exe` and `launcher.yaml` into the same
 folder, anywhere — a USB stick, the Desktop, `C:\Tools\`. Double-click the `.exe`.
 
 Use this when trying a new build, or on a machine you would rather not change.
@@ -65,7 +65,7 @@ choice when something is wrong.
 
 ### Installed — for a machine that keeps it
 
-Run `ELI.HMI.Launcher-0.4.0-x64-setup.exe`. It is a wizard, not a one-click
+Run `ELI-HMI-Launcher-0.4.0-x64-setup.exe`. It is a wizard, not a one-click
 installer, and installs per-user, so it does not ask for administrator rights.
 The default location is
 
