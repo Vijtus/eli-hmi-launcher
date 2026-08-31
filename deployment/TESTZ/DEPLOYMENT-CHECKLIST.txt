@@ -1,0 +1,92 @@
+DEPLOYMENT - TESTZ-OPR04
+========================
+One page. Follow it in order. MANUAL.md has the detail if something is odd.
+
+
+BEFORE YOU TOUCH ANYTHING
+-------------------------
+[ ] This is the control-room workstation, TESTZ-OPR04.
+    On any other machine most rows will say "not on this machine" and that is
+    correct - the software they launch is not installed there. It is not a fault
+    and it is not worth debugging in the lab.
+
+
+1. RUN IT
+---------
+[ ] Open  0 - RELEASE v0.4.0-testz (USE THIS)
+[ ] Double-click  ELI-HMI-Launcher-0.4.0-x64-portable.exe
+    SmartScreen: More info -> Run anyway. It is unsigned. Once per version.
+[ ] Nothing is installed. It runs from the stick and writes its report there.
+
+    Use the PORTABLE build today, not the installer. It keeps the machine
+    unchanged and it leaves the diagnostics where you can pick them up.
+
+
+2. THE PANELS, IF NOT ALREADY DONE
+----------------------------------
+[ ] Does  C:\Workspaces\css-gui\panel\TESTZ\pm.bob  exist?
+        yes -> skip this step
+        no  -> copy  panels-for-css-gui\TESTZ  into  C:\Workspaces\css-gui\panel\
+
+    Without this, Power Meters and Centroids fail with "the panel does not
+    exist". Everything else is unaffected.
+
+
+3. WORK THROUGH THE ROWS
+------------------------
+Click anywhere on a row - the whole row is the button, not just the name.
+
+[ ] Phoebus (no panel)     first. If Phoebus opens, the install and TESTZ.ini
+                           are fine and anything left is a panel path.
+[ ] Power Meters           should open pm.bob
+[ ] Centroids              should open centroids.bob
+[ ] One Camera Manager     LabVIEW
+[ ] Fast Pointing IOC      LabVIEW
+[ ] Pointing               LabVIEW
+[ ] One web row            opens the browser
+
+    An error appears in a strip under the toolbar. Read it - it names the entry
+    and the actual cause.
+
+
+4. BEFORE YOU CLOSE IT
+----------------------
+[ ] WAIT ABOUT 15 SECONDS after your last click.
+
+    Each launch is watched for ten seconds and the results are written on the
+    way out. Closing early truncates the report and the trip is wasted.
+
+[ ] The report folder appears beside the .exe:
+
+        ELI-Launcher-testz-opr04-<date>_<time>\
+
+[ ] Move it into  4 - RESULTS (send these back)
+
+
+5. IF SOMETHING IS WRONG
+------------------------
+Do not debug it in the lab. Get the report out and read it afterwards.
+
+    report.md opens with "N of 15 entries would launch on this machine",
+    then every entry that would not, with the path it resolved and why.
+
+Two things you can fix on the spot:
+
+  "Root config uses obsolete `appName`; use `siteName`"
+      An old launcher.yaml is in %APPDATA%. This build reads the one beside the
+      .exe, so this only appears for an installed copy. Overwrite it with the
+      launcher.yaml from folder 0.
+
+  "REFUSED BY SECURITY POLICY"
+      The entry points outside the three allowed roots. Deliberate. Not
+      something to work around during a test.
+
+Credential-shaped values are stripped from the report before it is written, so
+the folder is safe to hand to anyone.
+
+
+NOT PART OF TODAY
+-----------------
+The GitLab catalog (Configuration... at the bottom right) is a separate change.
+It needs a certificate fix and a host file that does not exist in the repository
+yet. Leave it alone unless the local launcher.yaml is working first.
